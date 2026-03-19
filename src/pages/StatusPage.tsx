@@ -96,6 +96,15 @@ export default function StatusPage() {
             <Bell className="w-3.5 h-3.5" />
             Obter atualizações
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => navigate("/admin")}
+              className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors border border-border rounded-lg px-3 py-1.5"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              Admin
+            </button>
+          )}
         </div>
       </header>
 
