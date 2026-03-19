@@ -1,28 +1,49 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/AppHeader";
-import { useAreas, useSubareas } from "@/hooks/use-status-data";
+import { useAreas, useSubareas, useIncidents } from "@/hooks/use-status-data";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Trash2, Plus, BarChart3 } from "lucide-react";
+import { Trash2, Plus, BarChart3, Eye, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { format, startOfDay, subDays } from "date-fns";
+import { UpdateStatusDialog } from "@/components/UpdateStatusDialog";
+import { format, subDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+import { getLatestForArea } from "@/hooks/use-status-data";
+import { useLatestStatusLogs } from "@/hooks/use-status-data";
 
 export default function AdminPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const { data: areas, refetch: refetchAreas } = useAreas();
   const { data: subareas, refetch: refetchSubareas } = useSubareas();
+  const { data: incidents, refetch: refetchIncidents } = useIncidents();
+  const { data: logs } = useLatestStatusLogs();
   const queryClient = useQueryClient();
 
   const [newAreaName, setNewAreaName] = useState("");
   const [newAreaType, setNewAreaType] = useState<"normal" | "group">("normal");
   const [newSubareaName, setNewSubareaName] = useState("");
   const [newSubareaAreaId, setNewSubareaAreaId] = useState("");
+
+  // Incident creation
+  const [incidentTitle, setIncidentTitle] = useState("");
+  const [incidentAreaId, setIncidentAreaId] = useState("");
+  const [incidentMessage, setIncidentMessage] = useState("");
+
+  // Incident update
+  const [updateIncidentId, setUpdateIncidentId] = useState("");
+  const [updateStatus, setUpdateStatus] = useState("monitoring");
+  const [updateMessage, setUpdateMessage] = useState("");
+
+  // Status update dialog
+  const [updateTarget, setUpdateTarget] = useState<{ areaId: string; subareaId?: string } | null>(null);
 
   // KPI data
   const { data: kpiData } = useQuery({
@@ -38,15 +59,6 @@ export default function AdminPage() {
 
       if (!recentLogs) return null;
 
-      // Areas with most instability
-      const instabilityCount: Record<string, number> = {};
-      recentLogs.forEach((l: any) => {
-        if (l.status === "red" || l.status === "yellow") {
-          instabilityCount[l.area_id] = (instabilityCount[l.area_id] || 0) + 1;
-        }
-      });
-
-      // Operator ranking
       const operatorUpdates: Record<string, { nome: string; count: number }> = {};
       recentLogs.forEach((l: any) => {
         const name = l.profiles?.nome || "Desconhecido";
@@ -58,7 +70,6 @@ export default function AdminPage() {
 
       return {
         totalUpdates: recentLogs.length,
-        instabilityCount,
         operatorRanking: Object.values(operatorUpdates).sort((a, b) => b.count - a.count).slice(0, 5),
         redCount: recentLogs.filter((l: any) => l.status === "red").length,
       };
@@ -84,9 +95,8 @@ export default function AdminPage() {
       tipo: newAreaType,
       ordem: (areas?.length || 0) + 1,
     });
-    if (error) {
-      toast.error(error.message);
-    } else {
+    if (error) toast.error(error.message);
+    else {
       toast.success("Área adicionada");
       setNewAreaName("");
       refetchAreas();
@@ -128,16 +138,123 @@ export default function AdminPage() {
     }
   };
 
+  const createIncident = async () => {
+    if (!incidentTitle.trim() || !incidentMessage.trim() || !user) return;
+    const { data: incident, error } = await supabase
+      .from("incidents")
+      .insert({
+        title: incidentTitle.trim(),
+        area_id: incidentAreaId || null,
+        status: "investigating",
+      })
+      .select()
+      .single();
+    if (error) { toast.error(error.message); return; }
+
+    await supabase.from("incident_updates").insert({
+      incident_id: incident.id,
+      status: "investigating",
+      message: incidentMessage.trim(),
+      usuario_id: user.id,
+    });
+
+    toast.success("Incidente criado");
+    setIncidentTitle("");
+    setIncidentMessage("");
+    setIncidentAreaId("");
+    refetchIncidents();
+  };
+
+  const addIncidentUpdate = async () => {
+    if (!updateIncidentId || !updateMessage.trim() || !user) return;
+    
+    const { error: updateError } = await supabase.from("incident_updates").insert({
+      incident_id: updateIncidentId,
+      status: updateStatus,
+      message: updateMessage.trim(),
+      usuario_id: user.id,
+    });
+    if (updateError) { toast.error(updateError.message); return; }
+
+    await supabase.from("incidents").update({
+      status: updateStatus,
+      resolved_at: updateStatus === "resolved" ? new Date().toISOString() : null,
+    }).eq("id", updateIncidentId);
+
+    toast.success("Atualização adicionada");
+    setUpdateMessage("");
+    setUpdateIncidentId("");
+    refetchIncidents();
+  };
+
+  const getAreaName = (id: string) => areas?.find(a => a.id === id)?.nome || "";
+  const getSubareaName = (id?: string) => subareas?.find(s => s.id === id)?.nome || "";
+
   const groupAreas = areas?.filter(a => a.tipo === "group") || [];
+  const activeIncidents = incidents?.filter(i => i.status !== "resolved") || [];
 
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />
       <div className="container max-w-5xl mx-auto px-4 py-8 space-y-8">
-        <h2 className="text-xl font-bold text-foreground">Painel Administrativo</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-foreground">Painel Administrativo</h2>
+          <Button variant="outline" size="sm" onClick={() => window.open("/", "_blank")}>
+            <Eye className="w-4 h-4 mr-1" />
+            Ver como cliente
+          </Button>
+        </div>
+
+        {/* Quick Status Update */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-foreground text-base">Atualizar Status Rápido</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {areas?.map(area => {
+                if (area.tipo === "group") {
+                  const areaSubs = subareas?.filter(s => s.area_id === area.id) || [];
+                  return areaSubs.map(sub => {
+                    const status = getLatestForArea(logs || [], area.id, sub.id)?.status || "gray";
+                    return (
+                      <button
+                        key={sub.id}
+                        onClick={() => setUpdateTarget({ areaId: area.id, subareaId: sub.id })}
+                        className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors text-left"
+                      >
+                        <span className="text-sm text-foreground truncate">{sub.nome}</span>
+                        <span className={cn("w-2.5 h-2.5 rounded-full shrink-0 ml-2",
+                          status === "green" ? "bg-status-green" :
+                          status === "yellow" ? "bg-status-yellow" :
+                          status === "red" ? "bg-status-red" : "bg-status-gray"
+                        )} />
+                      </button>
+                    );
+                  });
+                }
+                const status = getLatestForArea(logs || [], area.id)?.status || "gray";
+                return (
+                  <button
+                    key={area.id}
+                    onClick={() => setUpdateTarget({ areaId: area.id })}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors text-left"
+                  >
+                    <span className="text-sm font-medium text-foreground">{area.nome}</span>
+                    <span className={cn("w-2.5 h-2.5 rounded-full shrink-0 ml-2",
+                      status === "green" ? "bg-status-green" :
+                      status === "yellow" ? "bg-status-yellow" :
+                      status === "red" ? "bg-status-red" : "bg-status-gray"
+                    )} />
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Atualizações (7d)</CardTitle>
@@ -156,21 +273,88 @@ export default function AdminPage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Áreas Cadastradas</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Incidentes Ativos</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-foreground">{areas?.length || 0}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Subáreas</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-foreground">{subareas?.length || 0}</p>
+              <p className="text-2xl font-bold text-status-yellow">{activeIncidents.length}</p>
             </CardContent>
           </Card>
         </div>
+
+        {/* Create Incident */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-foreground flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              Criar Incidente
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input
+              placeholder="Título do incidente"
+              value={incidentTitle}
+              onChange={e => setIncidentTitle(e.target.value)}
+            />
+            <Select value={incidentAreaId} onValueChange={setIncidentAreaId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Área afetada (opcional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {areas?.map(a => (
+                  <SelectItem key={a.id} value={a.id}>{a.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Textarea
+              placeholder="Descrição inicial do incidente..."
+              value={incidentMessage}
+              onChange={e => setIncidentMessage(e.target.value)}
+            />
+            <Button onClick={createIncident} size="sm">
+              <Plus className="w-4 h-4 mr-1" /> Criar Incidente
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Update Incident */}
+        {activeIncidents.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-foreground text-base">Atualizar Incidente</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Select value={updateIncidentId} onValueChange={setUpdateIncidentId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o incidente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeIncidents.map(i => (
+                    <SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={updateStatus} onValueChange={setUpdateStatus}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="investigating">Investigando</SelectItem>
+                  <SelectItem value="identified">Identificado</SelectItem>
+                  <SelectItem value="monitoring">Monitorando</SelectItem>
+                  <SelectItem value="resolved">Resolvido</SelectItem>
+                </SelectContent>
+              </Select>
+              <Textarea
+                placeholder="Mensagem da atualização..."
+                value={updateMessage}
+                onChange={e => setUpdateMessage(e.target.value)}
+              />
+              <Button onClick={addIncidentUpdate} size="sm">
+                Adicionar Atualização
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Operator Ranking */}
         {kpiData?.operatorRanking && kpiData.operatorRanking.length > 0 && (
@@ -220,7 +404,6 @@ export default function AdminPage() {
                 <Plus className="w-4 h-4 mr-1" /> Adicionar
               </Button>
             </div>
-
             <div className="divide-y divide-border">
               {areas?.map(area => (
                 <div key={area.id} className="flex items-center justify-between py-2">
@@ -265,7 +448,6 @@ export default function AdminPage() {
                   <Plus className="w-4 h-4 mr-1" /> Adicionar
                 </Button>
               </div>
-
               <div className="divide-y divide-border">
                 {subareas?.map(sub => (
                   <div key={sub.id} className="flex items-center justify-between py-2">
@@ -285,6 +467,17 @@ export default function AdminPage() {
           </Card>
         )}
       </div>
+
+      {updateTarget && (
+        <UpdateStatusDialog
+          open={!!updateTarget}
+          onClose={() => setUpdateTarget(null)}
+          areaId={updateTarget.areaId}
+          areaName={getAreaName(updateTarget.areaId)}
+          subareaId={updateTarget.subareaId}
+          subareaName={updateTarget.subareaId ? getSubareaName(updateTarget.subareaId) : undefined}
+        />
+      )}
     </div>
   );
 }

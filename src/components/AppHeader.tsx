@@ -1,6 +1,6 @@
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { LogOut, Shield, History } from "lucide-react";
+import { LogOut, Shield, History, Eye } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 
 export function AppHeader() {
@@ -15,14 +15,13 @@ export function AppHeader() {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-sm">GFX</span>
           </div>
-          <span className="font-semibold text-foreground hidden sm:block">Status Center</span>
+          <span className="font-semibold text-foreground hidden sm:block">Admin</span>
         </div>
         <div className="flex items-center gap-2">
-          {location.pathname !== "/" && (
-            <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
-              Dashboard
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={() => window.open("/", "_blank")}>
+            <Eye className="w-4 h-4 mr-1" />
+            Ver como cliente
+          </Button>
           {isAdmin && location.pathname !== "/admin" && (
             <Button variant="ghost" size="sm" onClick={() => navigate("/admin")}>
               <Shield className="w-4 h-4 mr-1" />
