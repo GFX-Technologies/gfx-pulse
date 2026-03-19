@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAreas, useSubareas, useLatestStatusLogs, useAllStatusLogs, useIncidents, getLatestForArea } from "@/hooks/use-status-data";
+import { useAuth } from "@/lib/auth-context";
 import { ServiceRow } from "@/components/ServiceRow";
 import { IncidentTimeline } from "@/components/IncidentTimeline";
 import { SlaIndicator, SlaTimeline } from "@/components/SlaIndicator";
