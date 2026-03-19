@@ -1,0 +1,2 @@
+ALTER TABLE public.status_logs DROP CONSTRAINT status_logs_usuario_id_fkey;
+ALTER TABLE public.status_logs ADD CONSTRAINT status_logs_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
