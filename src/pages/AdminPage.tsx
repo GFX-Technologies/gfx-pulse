@@ -199,7 +199,7 @@ export default function AdminPage() {
       <div className="container max-w-5xl mx-auto px-4 py-8 space-y-8">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-foreground">Painel Administrativo</h2>
-          <Button variant="outline" size="sm" onClick={() => window.open("/", "_blank")}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
             <Eye className="w-4 h-4 mr-1" />
             Ver como cliente
           </Button>

@@ -18,7 +18,7 @@ export function AppHeader() {
           <span className="font-semibold text-foreground hidden sm:block">Admin</span>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => window.open("/", "_blank")}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
             <Eye className="w-4 h-4 mr-1" />
             Ver como cliente
           </Button>
