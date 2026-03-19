@@ -14,16 +14,176 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      areas: {
+        Row: {
+          created_at: string
+          id: string
+          nome: string
+          ordem: number
+          tipo: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nome: string
+          ordem?: number
+          tipo?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nome?: string
+          ordem?: number
+          tipo?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          nome: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id: string
+          nome: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          nome?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      sla_schedules: {
+        Row: {
+          area_id: string
+          check_time: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          area_id: string
+          check_time: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          area_id?: string
+          check_time?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sla_schedules_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      status_logs: {
+        Row: {
+          area_id: string
+          created_at: string
+          id: string
+          observacao: string | null
+          status: Database["public"]["Enums"]["status_type"]
+          subarea_id: string | null
+          usuario_id: string
+        }
+        Insert: {
+          area_id: string
+          created_at?: string
+          id?: string
+          observacao?: string | null
+          status?: Database["public"]["Enums"]["status_type"]
+          subarea_id?: string | null
+          usuario_id: string
+        }
+        Update: {
+          area_id?: string
+          created_at?: string
+          id?: string
+          observacao?: string | null
+          status?: Database["public"]["Enums"]["status_type"]
+          subarea_id?: string | null
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "status_logs_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "status_logs_subarea_id_fkey"
+            columns: ["subarea_id"]
+            isOneToOne: false
+            referencedRelation: "subareas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subareas: {
+        Row: {
+          area_id: string
+          created_at: string
+          id: string
+          nome: string
+          ordem: number
+        }
+        Insert: {
+          area_id: string
+          created_at?: string
+          id?: string
+          nome: string
+          ordem?: number
+        }
+        Update: {
+          area_id?: string
+          created_at?: string
+          id?: string
+          nome?: string
+          ordem?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subareas_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "operador"
+      status_type: "green" | "yellow" | "red" | "gray"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +310,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "operador"],
+      status_type: ["green", "yellow", "red", "gray"],
+    },
   },
 } as const
