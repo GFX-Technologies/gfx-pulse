@@ -1,14 +1,18 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAreas, useSubareas, useLatestStatusLogs, useAllStatusLogs, useIncidents, getLatestForArea } from "@/hooks/use-status-data";
+import { useAuth } from "@/lib/auth-context";
 import { ServiceRow } from "@/components/ServiceRow";
 import { IncidentTimeline } from "@/components/IncidentTimeline";
 import { SlaIndicator, SlaTimeline } from "@/components/SlaIndicator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getGlobalStatus } from "@/lib/sla";
 import { cn } from "@/lib/utils";
-import { Bell } from "lucide-react";
+import { Bell, Shield } from "lucide-react";
 
 export default function StatusPage() {
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const { data: areas, isLoading: areasLoading } = useAreas();
   const { data: subareas } = useSubareas();
   const { data: logs } = useLatestStatusLogs();
@@ -92,6 +96,15 @@ export default function StatusPage() {
             <Bell className="w-3.5 h-3.5" />
             Obter atualizações
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => navigate("/admin")}
+              className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors border border-border rounded-lg px-3 py-1.5"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              Admin
+            </button>
+          )}
         </div>
       </header>
 
