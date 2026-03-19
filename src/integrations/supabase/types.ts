@@ -38,6 +38,93 @@ export type Database = {
         }
         Relationships: []
       }
+      incident_updates: {
+        Row: {
+          created_at: string
+          id: string
+          incident_id: string
+          message: string
+          status: string
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          incident_id: string
+          message: string
+          status: string
+          usuario_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          incident_id?: string
+          message?: string
+          status?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incident_updates_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incident_updates_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      incidents: {
+        Row: {
+          area_id: string | null
+          created_at: string
+          id: string
+          resolved_at: string | null
+          status: string
+          subarea_id: string | null
+          title: string
+        }
+        Insert: {
+          area_id?: string | null
+          created_at?: string
+          id?: string
+          resolved_at?: string | null
+          status?: string
+          subarea_id?: string | null
+          title: string
+        }
+        Update: {
+          area_id?: string | null
+          created_at?: string
+          id?: string
+          resolved_at?: string | null
+          status?: string
+          subarea_id?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incidents_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incidents_subarea_id_fkey"
+            columns: ["subarea_id"]
+            isOneToOne: false
+            referencedRelation: "subareas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string

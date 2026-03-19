@@ -1,6 +1,6 @@
 import { useAuth } from "@/lib/auth-context";
 import Login from "./Login";
-import Dashboard from "./Dashboard";
+import StatusPage from "./StatusPage";
 
 const Index = () => {
   const { user, loading } = useAuth();
@@ -16,7 +16,7 @@ const Index = () => {
   }
 
   if (!user) return <Login />;
-  return <Dashboard />;
+  return <StatusPage />;
 };
 
 export default Index;

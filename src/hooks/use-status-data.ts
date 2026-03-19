@@ -33,7 +33,6 @@ export function useLatestStatusLogs() {
   const query = useQuery({
     queryKey: ["latest-status-logs"],
     queryFn: async () => {
-      // Get the latest log for each area/subarea combination
       const { data, error } = await supabase
         .from("status_logs")
         .select("*, profiles:usuario_id(nome)")
@@ -42,10 +41,9 @@ export function useLatestStatusLogs() {
       if (error) throw error;
       return data;
     },
-    refetchInterval: 30000, // Refetch every 30s
+    refetchInterval: 30000,
   });
 
-  // Subscribe to realtime updates
   useEffect(() => {
     const channel = supabase
       .channel("status-logs-realtime")
@@ -66,6 +64,26 @@ export function useLatestStatusLogs() {
   return query;
 }
 
+// Fetch ALL status logs for uptime bar (last 90 days)
+export function useAllStatusLogs() {
+  return useQuery({
+    queryKey: ["all-status-logs"],
+    queryFn: async () => {
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      
+      const { data, error } = await supabase
+        .from("status_logs")
+        .select("area_id, subarea_id, status, created_at")
+        .gte("created_at", ninetyDaysAgo.toISOString())
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    refetchInterval: 60000,
+  });
+}
+
 export function useStatusHistory(areaId?: string, subareaId?: string) {
   return useQuery({
     queryKey: ["status-history", areaId, subareaId],
@@ -84,6 +102,23 @@ export function useStatusHistory(areaId?: string, subareaId?: string) {
       if (error) throw error;
       return data;
     },
+  });
+}
+
+// Incidents hooks
+export function useIncidents() {
+  return useQuery({
+    queryKey: ["incidents"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("incidents")
+        .select("*, areas:area_id(nome), incident_updates(*, profiles:usuario_id(nome))")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data;
+    },
+    refetchInterval: 30000,
   });
 }
 
