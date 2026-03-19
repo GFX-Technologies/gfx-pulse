@@ -8,9 +8,11 @@ import { SlaIndicator, SlaTimeline } from "@/components/SlaIndicator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getGlobalStatus } from "@/lib/sla";
 import { cn } from "@/lib/utils";
-import { Bell } from "lucide-react";
+import { Bell, Shield } from "lucide-react";
 
 export default function StatusPage() {
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const { data: areas, isLoading: areasLoading } = useAreas();
   const { data: subareas } = useSubareas();
   const { data: logs } = useLatestStatusLogs();
