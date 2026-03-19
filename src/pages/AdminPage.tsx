@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/AppHeader";
 import { useAreas, useSubareas, useIncidents } from "@/hooks/use-status-data";
@@ -20,6 +21,7 @@ import { getLatestForArea } from "@/hooks/use-status-data";
 import { useLatestStatusLogs } from "@/hooks/use-status-data";
 
 export default function AdminPage() {
+  const navigate = useNavigate();
   const { isAdmin, user } = useAuth();
   const { data: areas, refetch: refetchAreas } = useAreas();
   const { data: subareas, refetch: refetchSubareas } = useSubareas();
@@ -199,7 +201,7 @@ export default function AdminPage() {
       <div className="container max-w-5xl mx-auto px-4 py-8 space-y-8">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-foreground">Painel Administrativo</h2>
-          <Button variant="outline" size="sm" onClick={() => window.open("/", "_blank")}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
             <Eye className="w-4 h-4 mr-1" />
             Ver como cliente
           </Button>
