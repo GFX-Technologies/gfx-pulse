@@ -134,6 +134,13 @@ export type Database = {
             referencedRelation: "subareas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "status_logs_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       subareas: {
