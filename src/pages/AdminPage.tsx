@@ -21,6 +21,7 @@ import { getLatestForArea } from "@/hooks/use-status-data";
 import { useLatestStatusLogs } from "@/hooks/use-status-data";
 
 export default function AdminPage() {
+  const navigate = useNavigate();
   const { isAdmin, user } = useAuth();
   const { data: areas, refetch: refetchAreas } = useAreas();
   const { data: subareas, refetch: refetchSubareas } = useSubareas();
