@@ -12,7 +12,7 @@ import { Bell, Shield } from "lucide-react";
 
 export default function StatusPage() {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const { data: areas, isLoading: areasLoading } = useAreas();
   const { data: subareas } = useSubareas();
   const { data: logs } = useLatestStatusLogs();
