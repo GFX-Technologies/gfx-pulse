@@ -12,7 +12,7 @@ import { Bell, Shield } from "lucide-react";
 
 export default function StatusPage() {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const { data: areas, isLoading: areasLoading } = useAreas();
   const { data: subareas } = useSubareas();
   const { data: logs } = useLatestStatusLogs();
@@ -96,13 +96,21 @@ export default function StatusPage() {
             <Bell className="w-3.5 h-3.5" />
             Obter atualizações
           </button>
-          {isAdmin && (
+          {isAdmin ? (
             <button
               onClick={() => navigate("/admin")}
               className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors border border-border rounded-lg px-3 py-1.5"
             >
               <Shield className="w-3.5 h-3.5" />
               Admin
+            </button>
+          ) : !user && (
+            <button
+              onClick={() => navigate("/login")}
+              className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors border border-border rounded-lg px-3 py-1.5"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              Login
             </button>
           )}
         </div>

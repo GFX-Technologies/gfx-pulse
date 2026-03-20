@@ -1,0 +1,12 @@
+DROP POLICY IF EXISTS "Anyone can view areas" ON areas;
+CREATE POLICY "Anyone can view areas" ON areas FOR SELECT TO anon, authenticated USING (true);
+DROP POLICY IF EXISTS "Anyone can view subareas" ON subareas;
+CREATE POLICY "Anyone can view subareas" ON subareas FOR SELECT TO anon, authenticated USING (true);
+DROP POLICY IF EXISTS "Anyone can view status_logs" ON status_logs;
+CREATE POLICY "Anyone can view status_logs" ON status_logs FOR SELECT TO anon, authenticated USING (true);
+DROP POLICY IF EXISTS "Anyone can view incidents" ON incidents;
+CREATE POLICY "Anyone can view incidents" ON incidents FOR SELECT TO anon, authenticated USING (true);
+DROP POLICY IF EXISTS "Anyone can view incident_updates" ON incident_updates;
+CREATE POLICY "Anyone can view incident_updates" ON incident_updates FOR SELECT TO anon, authenticated USING (true);
+DROP POLICY IF EXISTS "Anyone can view sla_schedules" ON sla_schedules;
+CREATE POLICY "Anyone can view sla_schedules" ON sla_schedules FOR SELECT TO anon, authenticated USING (true);
