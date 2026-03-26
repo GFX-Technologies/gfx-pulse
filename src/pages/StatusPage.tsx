@@ -20,6 +20,7 @@ export default function StatusPage() {
   const { data: logs } = useLatestStatusLogs();
   const { data: allLogs } = useAllStatusLogs();
   const { data: incidents } = useIncidents();
+  const { data: whatsappChecks } = useTodayWhatsAppChecks();
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
