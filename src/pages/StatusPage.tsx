@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAreas, useSubareas, useLatestStatusLogs, useAllStatusLogs, useIncidents, getLatestForArea } from "@/hooks/use-status-data";
+import { useTodayWhatsAppChecks, getCurrentStatusForSubarea, type WhatsAppCheckStatus } from "@/hooks/use-whatsapp-checks";
+import { SLA_CHECK_TIMES } from "@/lib/sla";
 import { useAuth } from "@/lib/auth-context";
 import { ServiceRow } from "@/components/ServiceRow";
 import { IncidentTimeline } from "@/components/IncidentTimeline";
