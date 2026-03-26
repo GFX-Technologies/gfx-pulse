@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAreas, useSubareas, useLatestStatusLogs, useAllStatusLogs, useIncidents, getLatestForArea } from "@/hooks/use-status-data";
+import { useTodayWhatsAppChecks, getCurrentStatusForSubarea, type WhatsAppCheckStatus } from "@/hooks/use-whatsapp-checks";
+import { SLA_CHECK_TIMES } from "@/lib/sla";
 import { useAuth } from "@/lib/auth-context";
 import { ServiceRow } from "@/components/ServiceRow";
 import { IncidentTimeline } from "@/components/IncidentTimeline";
@@ -18,6 +20,7 @@ export default function StatusPage() {
   const { data: logs } = useLatestStatusLogs();
   const { data: allLogs } = useAllStatusLogs();
   const { data: incidents } = useIncidents();
+  const { data: whatsappChecks } = useTodayWhatsAppChecks();
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -32,10 +35,16 @@ export default function StatusPage() {
   // Compute statuses for global bar
   const allStatuses = useMemo(() => {
     if (!areas || !logs) return [];
+    const waStatusMap: Record<WhatsAppCheckStatus, string> = {
+      operational: "green", degraded: "yellow", down: "red", not_checked: "gray",
+    };
     return areas.map(a => {
       if (a.tipo === "group") {
         const subs = subareas?.filter(s => s.area_id === a.id) || [];
-        const subStatuses = subs.map(s => getLatestForArea(logs, a.id, s.id)?.status || "gray");
+        const subStatuses = subs.map(s => {
+          const waStatus = getCurrentStatusForSubarea(whatsappChecks || [], s.id, SLA_CHECK_TIMES);
+          return waStatusMap[waStatus];
+        });
         if (subStatuses.some(s => s === "red")) return "red";
         if (subStatuses.some(s => s === "yellow")) return "yellow";
         if (subStatuses.every(s => s === "green")) return "green";
@@ -43,7 +52,7 @@ export default function StatusPage() {
       }
       return getLatestForArea(logs, a.id)?.status || "gray";
     });
-  }, [areas, subareas, logs]);
+  }, [areas, subareas, logs, whatsappChecks]);
 
   const global = getGlobalStatus(allStatuses);
 
@@ -141,9 +150,16 @@ export default function StatusPage() {
             const isGroup = area.tipo === "group";
             const areaSubs = subareas?.filter(s => s.area_id === area.id) || [];
 
+            const waStatusMap: Record<WhatsAppCheckStatus, string> = {
+              operational: "green", degraded: "yellow", down: "red", not_checked: "gray",
+            };
+
             let displayStatus = "gray";
             if (isGroup) {
-              const subStatuses = areaSubs.map(s => getLatestForArea(logs || [], area.id, s.id)?.status || "gray");
+              const subStatuses = areaSubs.map(s => {
+                const waStatus = getCurrentStatusForSubarea(whatsappChecks || [], s.id, SLA_CHECK_TIMES);
+                return waStatusMap[waStatus];
+              });
               if (subStatuses.some(s => s === "red")) displayStatus = "red";
               else if (subStatuses.some(s => s === "yellow")) displayStatus = "yellow";
               else if (subStatuses.every(s => s === "green")) displayStatus = "green";
@@ -151,11 +167,17 @@ export default function StatusPage() {
               displayStatus = getLatestForArea(logs || [], area.id)?.status || "gray";
             }
 
-            const subareaData = areaSubs.map(s => ({
-              id: s.id,
-              nome: s.nome,
-              status: getLatestForArea(logs || [], area.id, s.id)?.status || "gray",
-            }));
+            const subareaData = areaSubs.map(s => {
+              if (isGroup) {
+                const waStatus = getCurrentStatusForSubarea(whatsappChecks || [], s.id, SLA_CHECK_TIMES);
+                return { id: s.id, nome: s.nome, status: waStatusMap[waStatus] };
+              }
+              return {
+                id: s.id,
+                nome: s.nome,
+                status: getLatestForArea(logs || [], area.id, s.id)?.status || "gray",
+              };
+            });
 
             return (
               <ServiceRow
