@@ -163,7 +163,7 @@ export function ServiceRow({
                 </div>
               </div>
               <div className="px-5 pb-3 pl-10">
-                <UptimeBar logs={logs} areaId={areaId} subareaId={sub.id} />
+                <UptimeBar logs={logs} areaId={areaId} subareaId={sub.id} todayOverrideStatus={sub.status as "green" | "yellow" | "red" | "gray"} />
               </div>
             </div>
           ))}
