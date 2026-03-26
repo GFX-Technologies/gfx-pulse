@@ -12,10 +12,11 @@ interface UptimeBarProps {
 }
 
 type DayStatus = "green" | "yellow" | "red" | "gray";
+type DayEntry = { date: Date; status: DayStatus; hadIncident?: boolean };
 
 export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideStatus }: UptimeBarProps) {
   const dayStatuses = useMemo(() => {
-    const result: { date: Date; status: DayStatus }[] = [];
+    const result: DayEntry[] = [];
     const now = new Date();
 
     for (let i = days - 1; i >= 0; i--) {
@@ -33,9 +34,9 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideSta
           return logDate >= dayStart && logDate <= dayEnd;
         }) || [];
         const hadIncident = todayLogs.some((l: any) => l.status === "red" || l.status === "yellow");
-        // If currently operational but had issues earlier, show yellow
+        // If currently operational but had issues earlier, show green with small incident mark
         if (todayOverrideStatus === "green" && hadIncident) {
-          result.push({ date: day, status: "yellow" });
+          result.push({ date: day, status: "green", hadIncident: true });
         } else {
           result.push({ date: day, status: todayOverrideStatus });
         }
@@ -55,9 +56,15 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideSta
       } else {
         const hasRed = dayLogs.some((l: any) => l.status === "red");
         const hasYellow = dayLogs.some((l: any) => l.status === "yellow");
-        if (hasRed) result.push({ date: day, status: "red" });
-        else if (hasYellow) result.push({ date: day, status: "yellow" });
-        else result.push({ date: day, status: "green" });
+        const hasGreen = dayLogs.some((l: any) => l.status === "green");
+        if (hasRed) {
+          // If also has green (resolved), mark as had incident
+          result.push({ date: day, status: hasGreen ? "green" : "red", hadIncident: hasGreen });
+        } else if (hasYellow) {
+          result.push({ date: day, status: hasGreen ? "green" : "yellow", hadIncident: hasGreen });
+        } else {
+          result.push({ date: day, status: "green" });
+        }
       }
     }
     return result;
@@ -90,14 +97,24 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideSta
         {dayStatuses.map((day, i) => (
           <Tooltip key={i}>
             <TooltipTrigger asChild>
-              <div
-                className={`flex-1 h-full rounded-[2px] transition-opacity hover:opacity-80 cursor-default ${statusColors[day.status]}`}
-                style={{ minWidth: "2px" }}
-              />
+              {day.hadIncident ? (
+                <div
+                  className="flex-1 h-full rounded-[2px] transition-opacity hover:opacity-80 cursor-default flex flex-col overflow-hidden"
+                  style={{ minWidth: "2px" }}
+                >
+                  <div className="flex-1 bg-status-green rounded-t-[2px]" />
+                  <div className="h-2.5 bg-status-yellow rounded-b-[2px]" />
+                </div>
+              ) : (
+                <div
+                  className={`flex-1 h-full rounded-[2px] transition-opacity hover:opacity-80 cursor-default ${statusColors[day.status]}`}
+                  style={{ minWidth: "2px" }}
+                />
+              )}
             </TooltipTrigger>
             <TooltipContent side="top" className="text-xs">
               <p className="font-medium">{format(day.date, "dd MMM yyyy", { locale: ptBR })}</p>
-              <p>{statusLabels[day.status]}</p>
+              <p>{day.hadIncident ? "Resolvido" : statusLabels[day.status]}</p>
             </TooltipContent>
           </Tooltip>
         ))}
