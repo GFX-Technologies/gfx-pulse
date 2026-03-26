@@ -3,20 +3,21 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/AppHeader";
 import { useAreas, useSubareas, useIncidents, useLatestStatusLogs, getLatestForArea } from "@/hooks/use-status-data";
+import { useTodayWhatsAppChecks, getCheckForSlot, getCurrentStatusForSubarea, type WhatsAppCheckStatus } from "@/hooks/use-whatsapp-checks";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Eye, LayoutDashboard, Radio, MessageCircle, AlertTriangle, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format, startOfDay, isToday } from "date-fns";
+import { format, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { SLA_CHECK_TIMES, getCurrentWindow } from "@/lib/sla";
+import { SLA_CHECK_TIMES } from "@/lib/sla";
 import { UpdateStatusDialog } from "@/components/UpdateStatusDialog";
 
 import { DaySummary } from "@/components/admin/DaySummary";
 import { OperationTable } from "@/components/admin/OperationTable";
-import { WhatsAppCheckGrid, type CheckState } from "@/components/admin/WhatsAppCheckGrid";
+import { WhatsAppCheckGrid, type SlotData } from "@/components/admin/WhatsAppCheckGrid";
 import { IncidentManagement } from "@/components/admin/IncidentManagement";
 import { SettingsPanel } from "@/components/admin/SettingsPanel";
 
@@ -37,6 +38,7 @@ export default function AdminPage() {
   const { data: subareas, refetch: refetchSubareas } = useSubareas();
   const { data: incidents, refetch: refetchIncidents } = useIncidents();
   const { data: logs } = useLatestStatusLogs();
+  const { data: whatsappChecks } = useTodayWhatsAppChecks();
   const queryClient = useQueryClient();
 
   const [activeSection, setActiveSection] = useState<Section>("overview");
@@ -46,6 +48,7 @@ export default function AdminPage() {
     refetchAreas();
     refetchSubareas();
     queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
+    queryClient.invalidateQueries({ queryKey: ["whatsapp-checks"] });
   };
 
   if (!isAdmin) {
@@ -75,106 +78,61 @@ export default function AdminPage() {
   });
   if (whatsappSubareas.length > 0) {
     whatsappSubareas.forEach((sub) => {
-      const log = getLatestForArea(logs || [], whatsappArea!.id, sub.id);
-      allStatuses.push(log?.status || "gray");
+      const currentWaStatus = getCurrentStatusForSubarea(whatsappChecks || [], sub.id, SLA_CHECK_TIMES);
+      const statusMap: Record<WhatsAppCheckStatus, string> = {
+        operational: "green", degraded: "yellow", down: "red", not_checked: "gray",
+      };
+      allStatuses.push(statusMap[currentWaStatus]);
     });
   }
 
-  // Last global update
   const lastGlobalUpdate = todayLogs.length > 0
     ? format(new Date(todayLogs[0].created_at), "HH:mm", { locale: ptBR })
     : null;
 
-  // WhatsApp check calculations
-  const getCheckState = (subareaId: string, timeSlot: string): CheckState => {
-    if (!whatsappArea) return "not_started";
-    const [sh, sm] = timeSlot.split(":").map(Number);
-    const now = new Date();
-    const slotTime = new Date(now);
-    slotTime.setHours(sh, sm, 0, 0);
-
-    // If slot is in the future, not started
-    if (now < slotTime) return "not_started";
-
-    // Find a log for this subarea in today's logs that falls within this slot
-    const slotIdx = SLA_CHECK_TIMES.indexOf(timeSlot);
-    const nextSlotTime = new Date(now);
-    if (slotIdx < SLA_CHECK_TIMES.length - 1) {
-      const [nh, nm] = SLA_CHECK_TIMES[slotIdx + 1].split(":").map(Number);
-      nextSlotTime.setHours(nh, nm, 0, 0);
-    } else {
-      nextSlotTime.setHours(17, 0, 0, 0);
-    }
-
-    const hasCheck = todayLogs.some(
-      (l) =>
-        l.subarea_id === subareaId &&
-        l.area_id === whatsappArea.id &&
-        new Date(l.created_at) >= slotTime &&
-        new Date(l.created_at) < nextSlotTime
-    );
-
-    if (hasCheck) return "checked";
-
-    // Check if overdue (30 min past slot start)
-    const deadline = new Date(slotTime);
-    deadline.setMinutes(deadline.getMinutes() + 30);
-    if (now > nextSlotTime) return "missed";
-    if (now > deadline) return "overdue";
-    return "pending";
-  };
-
-  const subareaChecks = whatsappSubareas.map((sub) => {
-    const checks: Record<string, CheckState> = {};
-    const checkLogs: Record<string, { checkedAt: string; checkedBy: string } | null> = {};
+  // Build WhatsApp grid data from whatsapp_checks table
+  const subareaCheckRows = whatsappSubareas.map((sub) => {
+    const slots: Record<string, SlotData> = {};
     SLA_CHECK_TIMES.forEach((time) => {
-      checks[time] = getCheckState(sub.id, time);
-      // Find log details
-      if (checks[time] === "checked") {
-        const [sh, sm] = time.split(":").map(Number);
-        const slotTime = new Date();
-        slotTime.setHours(sh, sm, 0, 0);
-        const slotIdx = SLA_CHECK_TIMES.indexOf(time);
-        const nextSlotTime = new Date();
-        if (slotIdx < SLA_CHECK_TIMES.length - 1) {
-          const [nh, nm] = SLA_CHECK_TIMES[slotIdx + 1].split(":").map(Number);
-          nextSlotTime.setHours(nh, nm, 0, 0);
-        } else {
-          nextSlotTime.setHours(17, 0, 0, 0);
-        }
-        const log = todayLogs.find(
-          (l) =>
-            l.subarea_id === sub.id &&
-            l.area_id === whatsappArea?.id &&
-            new Date(l.created_at) >= slotTime &&
-            new Date(l.created_at) < nextSlotTime
-        );
-        checkLogs[time] = log
-          ? { checkedAt: format(new Date(log.created_at), "HH:mm"), checkedBy: (log as any).profiles?.nome || "" }
-          : null;
+      const check = getCheckForSlot(whatsappChecks || [], sub.id, time);
+      if (check && check.status !== "not_checked") {
+        slots[time] = {
+          status: check.status as WhatsAppCheckStatus,
+          checkedBy: (check as any).profiles?.nome || undefined,
+          checkedAt: check.checked_at ? format(new Date(check.checked_at), "HH:mm") : undefined,
+          observacao: check.observacao || undefined,
+        };
       } else {
-        checkLogs[time] = null;
+        slots[time] = { status: "not_checked" };
       }
     });
-    const latestLog = getLatestForArea(logs || [], whatsappArea?.id || "", sub.id);
     return {
       subareaId: sub.id,
       subareaName: sub.nome,
-      currentStatus: latestLog?.status || "gray",
-      checks,
-      checkLogs,
+      currentStatus: getCurrentStatusForSubarea(whatsappChecks || [], sub.id, SLA_CHECK_TIMES),
+      slots,
     };
   });
 
-  // Pending/overdue counts
-  const pendingChecks = subareaChecks.reduce(
-    (acc, sub) => acc + Object.values(sub.checks).filter((s) => s === "pending").length,
-    0
-  );
-  const overdueChecks = subareaChecks.reduce(
-    (acc, sub) => acc + Object.values(sub.checks).filter((s) => s === "overdue" || s === "missed").length,
-    0
-  );
+  // Pending/overdue counts based on time
+  const now = new Date();
+  let pendingChecks = 0;
+  let overdueChecks = 0;
+  whatsappSubareas.forEach((sub) => {
+    SLA_CHECK_TIMES.forEach((time) => {
+      const [h, m] = time.split(":").map(Number);
+      const slotTime = new Date(now);
+      slotTime.setHours(h, m, 0, 0);
+      if (now < slotTime) return; // future slot
+      const check = getCheckForSlot(whatsappChecks || [], sub.id, time);
+      if (!check || check.status === "not_checked") {
+        const deadline = new Date(slotTime);
+        deadline.setMinutes(deadline.getMinutes() + 30);
+        if (now > deadline) overdueChecks++;
+        else pendingChecks++;
+      }
+    });
+  });
 
   // Service rows for operation table
   const serviceStatuses = normalAreas.map((area) => {
@@ -203,97 +161,112 @@ export default function AdminPage() {
     }
   };
 
-  const handleMarkCheck = async (subareaId: string, timeSlot: string, note?: string) => {
-    if (!user || !whatsappArea) return;
-    const { error } = await supabase.from("status_logs").insert({
-      area_id: whatsappArea.id,
-      subarea_id: subareaId,
-      status: "green" as any,
-      observacao: note || null,
-      usuario_id: user.id,
-    });
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Check registrado");
-      queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
-    }
-  };
-
-  const handleBulkMarkSlot = async (timeSlot: string) => {
-    if (!user || !whatsappArea) return;
-    const pending = subareaChecks.filter(
-      (sub) => sub.checks[timeSlot] !== "checked" && sub.checks[timeSlot] !== "not_started"
+  const handleSetCheck = async (subareaId: string, timeSlot: string, status: WhatsAppCheckStatus, note?: string) => {
+    if (!user) return;
+    const today = new Date().toISOString().split("T")[0];
+    
+    // Upsert: use the unique constraint (subarea_id, check_date, check_time_slot)
+    const { error } = await supabase.from("whatsapp_checks").upsert(
+      {
+        subarea_id: subareaId,
+        check_date: today,
+        check_time_slot: timeSlot,
+        status,
+        observacao: note || null,
+        checked_by: user.id,
+        checked_at: new Date().toISOString(),
+        bulk_action: false,
+      },
+      { onConflict: "subarea_id,check_date,check_time_slot" }
     );
-    if (pending.length === 0) {
-      toast.info("Nenhum check pendente neste horário");
-      return;
-    }
-    const inserts = pending.map((sub) => ({
-      area_id: whatsappArea.id,
-      subarea_id: sub.subareaId,
-      status: "green" as const,
-      observacao: `Bulk check - slot ${timeSlot}`,
-      usuario_id: user.id,
-    }));
-    const { error } = await supabase.from("status_logs").insert(inserts);
     if (error) toast.error(error.message);
     else {
-      toast.success(`${pending.length} checks registrados`);
-      queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
+      toast.success("Verificação registrada");
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-checks"] });
     }
   };
 
-  const handleBulkMarkChannel = async (subareaId: string) => {
-    if (!user || !whatsappArea) return;
-    const sub = subareaChecks.find((s) => s.subareaId === subareaId);
-    if (!sub) return;
-    const pendingSlots = SLA_CHECK_TIMES.filter(
-      (t) => sub.checks[t] !== "checked" && sub.checks[t] !== "not_started"
-    );
-    if (pendingSlots.length === 0) {
-      toast.info("Nenhum check pendente neste canal");
-      return;
-    }
-    const inserts = pendingSlots.map((t) => ({
-      area_id: whatsappArea.id,
-      subarea_id: subareaId,
-      status: "green" as const,
-      observacao: `Bulk check - canal`,
-      usuario_id: user.id,
-    }));
-    const { error } = await supabase.from("status_logs").insert(inserts);
-    if (error) toast.error(error.message);
-    else {
-      toast.success(`${pendingSlots.length} checks registrados`);
-      queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
-    }
-  };
-
-  const handleBulkMarkAll = async () => {
-    if (!user || !whatsappArea) return;
+  const handleBulkAction = async (scope: "slot" | "channel" | "day", status: WhatsAppCheckStatus, note?: string, target?: string) => {
+    if (!user) return;
+    const today = new Date().toISOString().split("T")[0];
     const inserts: any[] = [];
-    subareaChecks.forEach((sub) => {
-      SLA_CHECK_TIMES.forEach((t) => {
-        if (sub.checks[t] !== "checked" && sub.checks[t] !== "not_started") {
+
+    if (scope === "slot" && target) {
+      // All subareas for this time slot that aren't already set
+      whatsappSubareas.forEach((sub) => {
+        const existing = getCheckForSlot(whatsappChecks || [], sub.id, target);
+        if (!existing || existing.status === "not_checked") {
           inserts.push({
-            area_id: whatsappArea.id,
-            subarea_id: sub.subareaId,
-            status: "green" as const,
-            observacao: "Bulk check - dia",
-            usuario_id: user.id,
+            subarea_id: sub.id,
+            check_date: today,
+            check_time_slot: target,
+            status,
+            observacao: note || `Bulk - slot ${target}`,
+            checked_by: user.id,
+            checked_at: new Date().toISOString(),
+            bulk_action: true,
+            bulk_scope: "slot",
           });
         }
       });
-    });
+    } else if (scope === "channel" && target) {
+      SLA_CHECK_TIMES.forEach((time) => {
+        const [h, m] = time.split(":").map(Number);
+        const slotTime = new Date(now);
+        slotTime.setHours(h, m, 0, 0);
+        if (now < slotTime) return;
+        const existing = getCheckForSlot(whatsappChecks || [], target, time);
+        if (!existing || existing.status === "not_checked") {
+          inserts.push({
+            subarea_id: target,
+            check_date: today,
+            check_time_slot: time,
+            status,
+            observacao: note || "Bulk - canal",
+            checked_by: user.id,
+            checked_at: new Date().toISOString(),
+            bulk_action: true,
+            bulk_scope: "channel",
+          });
+        }
+      });
+    } else if (scope === "day") {
+      whatsappSubareas.forEach((sub) => {
+        SLA_CHECK_TIMES.forEach((time) => {
+          const [h, m] = time.split(":").map(Number);
+          const slotTime = new Date(now);
+          slotTime.setHours(h, m, 0, 0);
+          if (now < slotTime) return;
+          const existing = getCheckForSlot(whatsappChecks || [], sub.id, time);
+          if (!existing || existing.status === "not_checked") {
+            inserts.push({
+              subarea_id: sub.id,
+              check_date: today,
+              check_time_slot: time,
+              status,
+              observacao: note || "Bulk - dia",
+              checked_by: user.id,
+              checked_at: new Date().toISOString(),
+              bulk_action: true,
+              bulk_scope: "day",
+            });
+          }
+        });
+      });
+    }
+
     if (inserts.length === 0) {
-      toast.info("Nenhum check pendente");
+      toast.info("Nenhum check pendente para atualizar");
       return;
     }
-    const { error } = await supabase.from("status_logs").insert(inserts);
+
+    const { error } = await supabase.from("whatsapp_checks").upsert(inserts, {
+      onConflict: "subarea_id,check_date,check_time_slot",
+    });
     if (error) toast.error(error.message);
     else {
       toast.success(`${inserts.length} checks registrados`);
-      queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-checks"] });
     }
   };
 
@@ -385,7 +358,7 @@ export default function AdminPage() {
             >
               <item.icon className="w-4 h-4" />
               {item.label}
-              {item.key === "whatsapp" && (overdueChecks > 0) && (
+              {item.key === "whatsapp" && overdueChecks > 0 && (
                 <span className="w-5 h-5 rounded-full bg-status-red text-[10px] font-bold text-white flex items-center justify-center">
                   {overdueChecks}
                 </span>
@@ -411,22 +384,17 @@ export default function AdminPage() {
                 lastGlobalUpdate={lastGlobalUpdate}
                 allStatuses={allStatuses}
               />
-              {/* Quick view of operation + whatsapp */}
               <OperationTable
                 services={serviceStatuses}
                 onQuickUpdate={handleQuickUpdate}
                 onOpenNote={(areaId) => setUpdateTarget({ areaId })}
-                onOpenIncident={(areaId) => {
-                  setActiveSection("incidents");
-                }}
+                onOpenIncident={() => setActiveSection("incidents")}
               />
               {whatsappSubareas.length > 0 && (
                 <WhatsAppCheckGrid
-                  subareaChecks={subareaChecks}
-                  onMarkCheck={handleMarkCheck}
-                  onBulkMarkSlot={handleBulkMarkSlot}
-                  onBulkMarkChannel={handleBulkMarkChannel}
-                  onBulkMarkAll={handleBulkMarkAll}
+                  subareaChecks={subareaCheckRows}
+                  onSetCheck={handleSetCheck}
+                  onBulkAction={handleBulkAction}
                 />
               )}
             </>
@@ -437,19 +405,15 @@ export default function AdminPage() {
               services={serviceStatuses}
               onQuickUpdate={handleQuickUpdate}
               onOpenNote={(areaId) => setUpdateTarget({ areaId })}
-              onOpenIncident={(areaId) => {
-                setActiveSection("incidents");
-              }}
+              onOpenIncident={() => setActiveSection("incidents")}
             />
           )}
 
           {activeSection === "whatsapp" && whatsappSubareas.length > 0 && (
             <WhatsAppCheckGrid
-              subareaChecks={subareaChecks}
-              onMarkCheck={handleMarkCheck}
-              onBulkMarkSlot={handleBulkMarkSlot}
-              onBulkMarkChannel={handleBulkMarkChannel}
-              onBulkMarkAll={handleBulkMarkAll}
+              subareaChecks={subareaCheckRows}
+              onSetCheck={handleSetCheck}
+              onBulkAction={handleBulkAction}
             />
           )}
 
