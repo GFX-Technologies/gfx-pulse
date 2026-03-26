@@ -110,9 +110,13 @@ export function useIncidents() {
   return useQuery({
     queryKey: ["incidents"],
     queryFn: async () => {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
       const { data, error } = await supabase
         .from("incidents")
         .select("*, areas:area_id(nome), incident_updates(*, profiles:usuario_id(nome))")
+        .or(`resolved_at.is.null,resolved_at.gte.${sevenDaysAgo.toISOString()}`)
         .order("created_at", { ascending: false })
         .limit(20);
       if (error) throw error;
