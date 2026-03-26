@@ -148,11 +148,20 @@ export function ServiceRow({
       {isGroup && isExpanded && subareas && (
         <div className="border-t border-border">
           {subareas.map((sub) => (
-            <div key={sub.id} className="border-b border-border last:border-b-0">
+            <div key={sub.id} className={cn(
+              "border-b border-border last:border-b-0",
+              sub.status === "red" && "bg-status-red/[0.05]",
+              sub.status === "yellow" && "bg-status-yellow/[0.05]"
+            )}>
               <div className="flex items-center justify-between px-5 py-3 pl-10">
-                <span className="text-sm text-foreground">{sub.nome}</span>
+                <span className={cn(
+                  "text-sm",
+                  sub.status === "red" ? "text-status-red font-semibold" :
+                  sub.status === "yellow" ? "text-status-yellow font-semibold" :
+                  "text-foreground"
+                )}>{sub.nome}</span>
                 <div className="flex items-center gap-2">
-                  <span className={cn("w-2 h-2 rounded-full", statusDotColors[sub.status] || statusDotColors.gray)} />
+                  <span className={cn("w-2 h-2 rounded-full", statusDotColors[sub.status] || statusDotColors.gray, sub.status === "red" && "animate-pulse")} />
                   <span className={cn("text-xs font-medium", statusTextColors[sub.status] || statusTextColors.gray)}>
                     {statusLabels[sub.status] || statusLabels.gray}
                   </span>
