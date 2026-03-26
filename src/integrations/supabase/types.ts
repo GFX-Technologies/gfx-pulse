@@ -262,6 +262,63 @@ export type Database = {
           },
         ]
       }
+      whatsapp_checks: {
+        Row: {
+          bulk_action: boolean | null
+          bulk_scope: string | null
+          check_date: string
+          check_time_slot: string
+          checked_at: string | null
+          checked_by: string | null
+          created_at: string
+          id: string
+          observacao: string | null
+          status: string
+          subarea_id: string
+        }
+        Insert: {
+          bulk_action?: boolean | null
+          bulk_scope?: string | null
+          check_date?: string
+          check_time_slot: string
+          checked_at?: string | null
+          checked_by?: string | null
+          created_at?: string
+          id?: string
+          observacao?: string | null
+          status?: string
+          subarea_id: string
+        }
+        Update: {
+          bulk_action?: boolean | null
+          bulk_scope?: string | null
+          check_date?: string
+          check_time_slot?: string
+          checked_at?: string | null
+          checked_by?: string | null
+          created_at?: string
+          id?: string
+          observacao?: string | null
+          status?: string
+          subarea_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_checks_checked_by_fkey"
+            columns: ["checked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_checks_subarea_id_fkey"
+            columns: ["subarea_id"]
+            isOneToOne: false
+            referencedRelation: "subareas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
