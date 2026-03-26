@@ -101,10 +101,7 @@ export default function StatusPage() {
             </div>
             <span className="font-semibold text-foreground text-lg">Status</span>
           </div>
-          <button className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors border border-border rounded-lg px-3 py-1.5">
-            <Bell className="w-3.5 h-3.5" />
-            Obter atualizações
-          </button>
+          <div className="flex items-center gap-2">
           {isAdmin ? (
             <button
               onClick={() => navigate("/admin")}
