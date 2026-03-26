@@ -8,11 +8,12 @@ interface UptimeBarProps {
   areaId: string;
   subareaId?: string;
   days?: number;
+  todayOverrideStatus?: "green" | "yellow" | "red" | "gray";
 }
 
 type DayStatus = "green" | "yellow" | "red" | "gray";
 
-export function UptimeBar({ logs, areaId, subareaId, days = 90 }: UptimeBarProps) {
+export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideStatus }: UptimeBarProps) {
   const dayStatuses = useMemo(() => {
     const result: { date: Date; status: DayStatus }[] = [];
     const now = new Date();
@@ -21,6 +22,12 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90 }: UptimeBarProps
       const day = subDays(now, i);
       const dayStart = startOfDay(day);
       const dayEnd = endOfDay(day);
+
+      // For today, use override if provided
+      if (i === 0 && todayOverrideStatus) {
+        result.push({ date: day, status: todayOverrideStatus });
+        continue;
+      }
 
       const dayLogs = logs?.filter((l: any) => {
         if (l.area_id !== areaId) return false;
@@ -41,7 +48,7 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90 }: UptimeBarProps
       }
     }
     return result;
-  }, [logs, areaId, subareaId, days]);
+  }, [logs, areaId, subareaId, days, todayOverrideStatus]);
 
   const uptimePercent = useMemo(() => {
     const daysWithData = dayStatuses.filter(d => d.status !== "gray");
