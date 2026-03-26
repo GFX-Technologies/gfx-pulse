@@ -135,7 +135,7 @@ export function ServiceRow({
       {/* Uptime bar for non-group services */}
       {!isGroup && (
         <div className="px-5 pb-4">
-          <UptimeBar logs={logs} areaId={areaId} subareaId={subareaId} />
+          <UptimeBar logs={logs} areaId={areaId} subareaId={subareaId} todayOverrideStatus={status as "green" | "yellow" | "red" | "gray"} />
         </div>
       )}
 
