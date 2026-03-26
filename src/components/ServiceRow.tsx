@@ -36,6 +36,57 @@ const statusTextColors: Record<string, string> = {
   gray: "text-status-gray",
 };
 
+function GroupStatusSummary({ subareas }: { subareas: { id: string; nome: string; status: string }[] }) {
+  const counts = { green: 0, yellow: 0, red: 0, gray: 0 };
+  subareas.forEach((s) => {
+    if (s.status in counts) counts[s.status as keyof typeof counts]++;
+    else counts.gray++;
+  });
+
+  const allOperational = counts.green === subareas.length;
+  const hasIssues = counts.red > 0 || counts.yellow > 0;
+
+  if (allOperational) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-status-green" />
+        <span className="text-sm font-medium text-status-green">
+          {counts.green} operacionais
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap justify-end">
+      {counts.green > 0 && (
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-status-green" />
+          <span className="text-xs font-medium text-status-green">{counts.green} operacional</span>
+        </div>
+      )}
+      {counts.yellow > 0 && (
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-status-yellow" />
+          <span className="text-xs font-medium text-status-yellow">{counts.yellow} instável</span>
+        </div>
+      )}
+      {counts.red > 0 && (
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-status-red" />
+          <span className="text-xs font-medium text-status-red">{counts.red} indisponível</span>
+        </div>
+      )}
+      {counts.gray > 0 && !hasIssues && (
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-status-gray" />
+          <span className="text-xs font-medium text-status-gray">{counts.gray} não verificado</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ServiceRow({
   name,
   status,
@@ -65,12 +116,17 @@ export function ServiceRow({
           )}
           <span className="font-medium text-sm text-foreground">{name}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={cn("w-2 h-2 rounded-full", statusDotColors[status] || statusDotColors.gray)} />
-          <span className={cn("text-sm font-medium", statusTextColors[status] || statusTextColors.gray)}>
-            {statusLabels[status] || statusLabels.gray}
-          </span>
-        </div>
+
+        {isGroup && subareas ? (
+          <GroupStatusSummary subareas={subareas} />
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className={cn("w-2 h-2 rounded-full", statusDotColors[status] || statusDotColors.gray)} />
+            <span className={cn("text-sm font-medium", statusTextColors[status] || statusTextColors.gray)}>
+              {statusLabels[status] || statusLabels.gray}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Uptime bar for non-group services */}
