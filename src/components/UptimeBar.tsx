@@ -12,6 +12,7 @@ interface UptimeBarProps {
 }
 
 type DayStatus = "green" | "yellow" | "red" | "gray";
+type DayEntry = { date: Date; status: DayStatus; hadIncident?: boolean };
 
 export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideStatus }: UptimeBarProps) {
   const dayStatuses = useMemo(() => {
