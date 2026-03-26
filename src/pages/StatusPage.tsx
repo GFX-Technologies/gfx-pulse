@@ -119,6 +119,7 @@ export default function StatusPage() {
               Login
             </button>
           )}
+          </div>
         </div>
       </header>
 
