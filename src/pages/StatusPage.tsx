@@ -150,9 +150,16 @@ export default function StatusPage() {
             const isGroup = area.tipo === "group";
             const areaSubs = subareas?.filter(s => s.area_id === area.id) || [];
 
+            const waStatusMap: Record<WhatsAppCheckStatus, string> = {
+              operational: "green", degraded: "yellow", down: "red", not_checked: "gray",
+            };
+
             let displayStatus = "gray";
             if (isGroup) {
-              const subStatuses = areaSubs.map(s => getLatestForArea(logs || [], area.id, s.id)?.status || "gray");
+              const subStatuses = areaSubs.map(s => {
+                const waStatus = getCurrentStatusForSubarea(whatsappChecks || [], s.id, SLA_CHECK_TIMES);
+                return waStatusMap[waStatus];
+              });
               if (subStatuses.some(s => s === "red")) displayStatus = "red";
               else if (subStatuses.some(s => s === "yellow")) displayStatus = "yellow";
               else if (subStatuses.every(s => s === "green")) displayStatus = "green";
@@ -160,11 +167,17 @@ export default function StatusPage() {
               displayStatus = getLatestForArea(logs || [], area.id)?.status || "gray";
             }
 
-            const subareaData = areaSubs.map(s => ({
-              id: s.id,
-              nome: s.nome,
-              status: getLatestForArea(logs || [], area.id, s.id)?.status || "gray",
-            }));
+            const subareaData = areaSubs.map(s => {
+              if (isGroup) {
+                const waStatus = getCurrentStatusForSubarea(whatsappChecks || [], s.id, SLA_CHECK_TIMES);
+                return { id: s.id, nome: s.nome, status: waStatusMap[waStatus] };
+              }
+              return {
+                id: s.id,
+                nome: s.nome,
+                status: getLatestForArea(logs || [], area.id, s.id)?.status || "gray",
+              };
+            });
 
             return (
               <ServiceRow
