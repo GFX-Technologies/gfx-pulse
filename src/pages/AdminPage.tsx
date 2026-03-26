@@ -1,24 +1,34 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/AppHeader";
-import { useAreas, useSubareas, useIncidents } from "@/hooks/use-status-data";
+import { useAreas, useSubareas, useIncidents, useLatestStatusLogs, getLatestForArea } from "@/hooks/use-status-data";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Trash2, Plus, BarChart3, Eye, AlertTriangle } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UpdateStatusDialog } from "@/components/UpdateStatusDialog";
-import { format, subDays } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { Eye, LayoutDashboard, Radio, MessageCircle, AlertTriangle, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getLatestForArea } from "@/hooks/use-status-data";
-import { useLatestStatusLogs } from "@/hooks/use-status-data";
+import { format, startOfDay, isToday } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { SLA_CHECK_TIMES, getCurrentWindow } from "@/lib/sla";
+import { UpdateStatusDialog } from "@/components/UpdateStatusDialog";
+
+import { DaySummary } from "@/components/admin/DaySummary";
+import { OperationTable } from "@/components/admin/OperationTable";
+import { WhatsAppCheckGrid, type CheckState } from "@/components/admin/WhatsAppCheckGrid";
+import { IncidentManagement } from "@/components/admin/IncidentManagement";
+import { SettingsPanel } from "@/components/admin/SettingsPanel";
+
+type Section = "overview" | "operation" | "whatsapp" | "incidents" | "settings";
+
+const NAV_ITEMS: { key: Section; label: string; icon: typeof LayoutDashboard }[] = [
+  { key: "overview", label: "Visão do Dia", icon: LayoutDashboard },
+  { key: "operation", label: "Operação", icon: Radio },
+  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { key: "incidents", label: "Incidentes", icon: AlertTriangle },
+  { key: "settings", label: "Configurações", icon: Settings },
+];
 
 export default function AdminPage() {
   const navigate = useNavigate();
@@ -29,445 +39,441 @@ export default function AdminPage() {
   const { data: logs } = useLatestStatusLogs();
   const queryClient = useQueryClient();
 
-  const [newAreaName, setNewAreaName] = useState("");
-  const [newAreaType, setNewAreaType] = useState<"normal" | "group">("normal");
-  const [newSubareaName, setNewSubareaName] = useState("");
-  const [newSubareaAreaId, setNewSubareaAreaId] = useState("");
-
-  // Incident creation
-  const [incidentTitle, setIncidentTitle] = useState("");
-  const [incidentAreaId, setIncidentAreaId] = useState("");
-  const [incidentMessage, setIncidentMessage] = useState("");
-
-  // Incident update
-  const [updateIncidentId, setUpdateIncidentId] = useState("");
-  const [updateStatus, setUpdateStatus] = useState("monitoring");
-  const [updateMessage, setUpdateMessage] = useState("");
-
-  // Status update dialog
+  const [activeSection, setActiveSection] = useState<Section>("overview");
   const [updateTarget, setUpdateTarget] = useState<{ areaId: string; subareaId?: string } | null>(null);
 
-  // KPI data
-  const { data: kpiData } = useQuery({
-    queryKey: ["admin-kpis"],
-    enabled: isAdmin,
-    queryFn: async () => {
-      const sevenDaysAgo = subDays(new Date(), 7).toISOString();
-      const { data: recentLogs } = await supabase
-        .from("status_logs")
-        .select("*, profiles:usuario_id(nome)")
-        .gte("created_at", sevenDaysAgo)
-        .order("created_at", { ascending: false });
-
-      if (!recentLogs) return null;
-
-      const operatorUpdates: Record<string, { nome: string; count: number }> = {};
-      recentLogs.forEach((l: any) => {
-        const name = l.profiles?.nome || "Desconhecido";
-        if (!operatorUpdates[l.usuario_id]) {
-          operatorUpdates[l.usuario_id] = { nome: name, count: 0 };
-        }
-        operatorUpdates[l.usuario_id].count++;
-      });
-
-      return {
-        totalUpdates: recentLogs.length,
-        operatorRanking: Object.values(operatorUpdates).sort((a, b) => b.count - a.count).slice(0, 5),
-        redCount: recentLogs.filter((l: any) => l.status === "red").length,
-      };
-    },
-    refetchInterval: 60000,
-  });
+  const refreshAll = () => {
+    refetchAreas();
+    refetchSubareas();
+    queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
+  };
 
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-background">
         <AppHeader />
-        <div className="container max-w-5xl mx-auto px-4 py-16 text-center text-muted-foreground">
+        <div className="container max-w-6xl mx-auto px-4 py-16 text-center text-muted-foreground">
           Acesso restrito a administradores.
         </div>
       </div>
     );
   }
 
-  const addArea = async () => {
-    if (!newAreaName.trim()) return;
-    const { error } = await supabase.from("areas").insert({
-      nome: newAreaName.trim(),
-      tipo: newAreaType,
-      ordem: (areas?.length || 0) + 1,
+  // Derived data
+  const normalAreas = areas?.filter((a) => a.tipo === "normal") || [];
+  const whatsappArea = areas?.find((a) => a.tipo === "group");
+  const whatsappSubareas = subareas?.filter((s) => s.area_id === whatsappArea?.id) || [];
+  const activeIncidents = incidents?.filter((i) => i.status !== "resolved") || [];
+
+  // Today's logs
+  const todayLogs = logs?.filter((l) => isToday(new Date(l.created_at))) || [];
+
+  // All statuses for global status
+  const allStatuses = normalAreas.map((a) => {
+    const log = getLatestForArea(logs || [], a.id);
+    return log?.status || "gray";
+  });
+  if (whatsappSubareas.length > 0) {
+    whatsappSubareas.forEach((sub) => {
+      const log = getLatestForArea(logs || [], whatsappArea!.id, sub.id);
+      allStatuses.push(log?.status || "gray");
+    });
+  }
+
+  // Last global update
+  const lastGlobalUpdate = todayLogs.length > 0
+    ? format(new Date(todayLogs[0].created_at), "HH:mm", { locale: ptBR })
+    : null;
+
+  // WhatsApp check calculations
+  const getCheckState = (subareaId: string, timeSlot: string): CheckState => {
+    if (!whatsappArea) return "not_started";
+    const [sh, sm] = timeSlot.split(":").map(Number);
+    const now = new Date();
+    const slotTime = new Date(now);
+    slotTime.setHours(sh, sm, 0, 0);
+
+    // If slot is in the future, not started
+    if (now < slotTime) return "not_started";
+
+    // Find a log for this subarea in today's logs that falls within this slot
+    const slotIdx = SLA_CHECK_TIMES.indexOf(timeSlot);
+    const nextSlotTime = new Date(now);
+    if (slotIdx < SLA_CHECK_TIMES.length - 1) {
+      const [nh, nm] = SLA_CHECK_TIMES[slotIdx + 1].split(":").map(Number);
+      nextSlotTime.setHours(nh, nm, 0, 0);
+    } else {
+      nextSlotTime.setHours(17, 0, 0, 0);
+    }
+
+    const hasCheck = todayLogs.some(
+      (l) =>
+        l.subarea_id === subareaId &&
+        l.area_id === whatsappArea.id &&
+        new Date(l.created_at) >= slotTime &&
+        new Date(l.created_at) < nextSlotTime
+    );
+
+    if (hasCheck) return "checked";
+
+    // Check if overdue (30 min past slot start)
+    const deadline = new Date(slotTime);
+    deadline.setMinutes(deadline.getMinutes() + 30);
+    if (now > nextSlotTime) return "missed";
+    if (now > deadline) return "overdue";
+    return "pending";
+  };
+
+  const subareaChecks = whatsappSubareas.map((sub) => {
+    const checks: Record<string, CheckState> = {};
+    const checkLogs: Record<string, { checkedAt: string; checkedBy: string } | null> = {};
+    SLA_CHECK_TIMES.forEach((time) => {
+      checks[time] = getCheckState(sub.id, time);
+      // Find log details
+      if (checks[time] === "checked") {
+        const [sh, sm] = time.split(":").map(Number);
+        const slotTime = new Date();
+        slotTime.setHours(sh, sm, 0, 0);
+        const slotIdx = SLA_CHECK_TIMES.indexOf(time);
+        const nextSlotTime = new Date();
+        if (slotIdx < SLA_CHECK_TIMES.length - 1) {
+          const [nh, nm] = SLA_CHECK_TIMES[slotIdx + 1].split(":").map(Number);
+          nextSlotTime.setHours(nh, nm, 0, 0);
+        } else {
+          nextSlotTime.setHours(17, 0, 0, 0);
+        }
+        const log = todayLogs.find(
+          (l) =>
+            l.subarea_id === sub.id &&
+            l.area_id === whatsappArea?.id &&
+            new Date(l.created_at) >= slotTime &&
+            new Date(l.created_at) < nextSlotTime
+        );
+        checkLogs[time] = log
+          ? { checkedAt: format(new Date(log.created_at), "HH:mm"), checkedBy: (log as any).profiles?.nome || "" }
+          : null;
+      } else {
+        checkLogs[time] = null;
+      }
+    });
+    const latestLog = getLatestForArea(logs || [], whatsappArea?.id || "", sub.id);
+    return {
+      subareaId: sub.id,
+      subareaName: sub.nome,
+      currentStatus: latestLog?.status || "gray",
+      checks,
+      checkLogs,
+    };
+  });
+
+  // Pending/overdue counts
+  const pendingChecks = subareaChecks.reduce(
+    (acc, sub) => acc + Object.values(sub.checks).filter((s) => s === "pending").length,
+    0
+  );
+  const overdueChecks = subareaChecks.reduce(
+    (acc, sub) => acc + Object.values(sub.checks).filter((s) => s === "overdue" || s === "missed").length,
+    0
+  );
+
+  // Service rows for operation table
+  const serviceStatuses = normalAreas.map((area) => {
+    const log = getLatestForArea(logs || [], area.id);
+    return {
+      areaId: area.id,
+      name: area.nome,
+      status: log?.status || "gray",
+      lastUpdate: log ? new Date(log.created_at) : null,
+      lastUpdatedBy: log ? (log as any).profiles?.nome || null : null,
+    };
+  });
+
+  // Handlers
+  const handleQuickUpdate = async (areaId: string, status: string) => {
+    if (!user) return;
+    const { error } = await supabase.from("status_logs").insert({
+      area_id: areaId,
+      status: status as any,
+      usuario_id: user.id,
     });
     if (error) toast.error(error.message);
     else {
-      toast.success("Área adicionada");
-      setNewAreaName("");
-      refetchAreas();
+      toast.success("Status atualizado");
+      queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
     }
   };
 
-  const deleteArea = async (id: string) => {
-    const { error } = await supabase.from("areas").delete().eq("id", id);
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Área removida");
-      refetchAreas();
-      refetchSubareas();
-    }
-  };
-
-  const addSubarea = async () => {
-    if (!newSubareaName.trim() || !newSubareaAreaId) return;
-    const currentSubs = subareas?.filter(s => s.area_id === newSubareaAreaId) || [];
-    const { error } = await supabase.from("subareas").insert({
-      nome: newSubareaName.trim(),
-      area_id: newSubareaAreaId,
-      ordem: currentSubs.length + 1,
+  const handleMarkCheck = async (subareaId: string, timeSlot: string, note?: string) => {
+    if (!user || !whatsappArea) return;
+    const { error } = await supabase.from("status_logs").insert({
+      area_id: whatsappArea.id,
+      subarea_id: subareaId,
+      status: "green" as any,
+      observacao: note || null,
+      usuario_id: user.id,
     });
     if (error) toast.error(error.message);
     else {
-      toast.success("Subárea adicionada");
-      setNewSubareaName("");
-      refetchSubareas();
+      toast.success("Check registrado");
+      queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
     }
   };
 
-  const deleteSubarea = async (id: string) => {
-    const { error } = await supabase.from("subareas").delete().eq("id", id);
+  const handleBulkMarkSlot = async (timeSlot: string) => {
+    if (!user || !whatsappArea) return;
+    const pending = subareaChecks.filter(
+      (sub) => sub.checks[timeSlot] !== "checked" && sub.checks[timeSlot] !== "not_started"
+    );
+    if (pending.length === 0) {
+      toast.info("Nenhum check pendente neste horário");
+      return;
+    }
+    const inserts = pending.map((sub) => ({
+      area_id: whatsappArea.id,
+      subarea_id: sub.subareaId,
+      status: "green" as const,
+      observacao: `Bulk check - slot ${timeSlot}`,
+      usuario_id: user.id,
+    }));
+    const { error } = await supabase.from("status_logs").insert(inserts);
     if (error) toast.error(error.message);
     else {
-      toast.success("Subárea removida");
-      refetchSubareas();
+      toast.success(`${pending.length} checks registrados`);
+      queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
     }
   };
 
-  const createIncident = async () => {
-    if (!incidentTitle.trim() || !incidentMessage.trim() || !user) return;
+  const handleBulkMarkChannel = async (subareaId: string) => {
+    if (!user || !whatsappArea) return;
+    const sub = subareaChecks.find((s) => s.subareaId === subareaId);
+    if (!sub) return;
+    const pendingSlots = SLA_CHECK_TIMES.filter(
+      (t) => sub.checks[t] !== "checked" && sub.checks[t] !== "not_started"
+    );
+    if (pendingSlots.length === 0) {
+      toast.info("Nenhum check pendente neste canal");
+      return;
+    }
+    const inserts = pendingSlots.map((t) => ({
+      area_id: whatsappArea.id,
+      subarea_id: subareaId,
+      status: "green" as const,
+      observacao: `Bulk check - canal`,
+      usuario_id: user.id,
+    }));
+    const { error } = await supabase.from("status_logs").insert(inserts);
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`${pendingSlots.length} checks registrados`);
+      queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
+    }
+  };
+
+  const handleBulkMarkAll = async () => {
+    if (!user || !whatsappArea) return;
+    const inserts: any[] = [];
+    subareaChecks.forEach((sub) => {
+      SLA_CHECK_TIMES.forEach((t) => {
+        if (sub.checks[t] !== "checked" && sub.checks[t] !== "not_started") {
+          inserts.push({
+            area_id: whatsappArea.id,
+            subarea_id: sub.subareaId,
+            status: "green" as const,
+            observacao: "Bulk check - dia",
+            usuario_id: user.id,
+          });
+        }
+      });
+    });
+    if (inserts.length === 0) {
+      toast.info("Nenhum check pendente");
+      return;
+    }
+    const { error } = await supabase.from("status_logs").insert(inserts);
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`${inserts.length} checks registrados`);
+      queryClient.invalidateQueries({ queryKey: ["latest-status-logs"] });
+    }
+  };
+
+  const handleCreateIncident = async (data: {
+    title: string;
+    areaId: string | null;
+    subareaId: string | null;
+    message: string;
+    severity: string;
+  }) => {
+    if (!user) return;
     const { data: incident, error } = await supabase
       .from("incidents")
       .insert({
-        title: incidentTitle.trim(),
-        area_id: incidentAreaId || null,
+        title: data.title,
+        area_id: data.areaId || null,
+        subarea_id: data.subareaId || null,
         status: "investigating",
       })
       .select()
       .single();
-    if (error) { toast.error(error.message); return; }
-
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     await supabase.from("incident_updates").insert({
       incident_id: incident.id,
       status: "investigating",
-      message: incidentMessage.trim(),
+      message: data.message,
       usuario_id: user.id,
     });
-
     toast.success("Incidente criado");
-    setIncidentTitle("");
-    setIncidentMessage("");
-    setIncidentAreaId("");
     refetchIncidents();
   };
 
-  const addIncidentUpdate = async () => {
-    if (!updateIncidentId || !updateMessage.trim() || !user) return;
-    
-    const { error: updateError } = await supabase.from("incident_updates").insert({
-      incident_id: updateIncidentId,
-      status: updateStatus,
-      message: updateMessage.trim(),
+  const handleUpdateIncident = async (incidentId: string, status: string, message: string) => {
+    if (!user) return;
+    const { error } = await supabase.from("incident_updates").insert({
+      incident_id: incidentId,
+      status,
+      message,
       usuario_id: user.id,
     });
-    if (updateError) { toast.error(updateError.message); return; }
-
-    await supabase.from("incidents").update({
-      status: updateStatus,
-      resolved_at: updateStatus === "resolved" ? new Date().toISOString() : null,
-    }).eq("id", updateIncidentId);
-
-    toast.success("Atualização adicionada");
-    setUpdateMessage("");
-    setUpdateIncidentId("");
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    await supabase
+      .from("incidents")
+      .update({
+        status,
+        resolved_at: status === "resolved" ? new Date().toISOString() : null,
+      })
+      .eq("id", incidentId);
+    toast.success("Incidente atualizado");
     refetchIncidents();
   };
-
-  const getAreaName = (id: string) => areas?.find(a => a.id === id)?.nome || "";
-  const getSubareaName = (id?: string) => subareas?.find(s => s.id === id)?.nome || "";
-
-  const groupAreas = areas?.filter(a => a.tipo === "group") || [];
-  const activeIncidents = incidents?.filter(i => i.status !== "resolved") || [];
 
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />
-      <div className="container max-w-5xl mx-auto px-4 py-8 space-y-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-foreground">Painel Administrativo</h2>
+      <div className="container max-w-6xl mx-auto px-4 py-6">
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-lg font-bold text-foreground">Centro de Operações</h1>
+            <p className="text-xs text-muted-foreground">
+              {format(new Date(), "EEEE, dd 'de' MMMM", { locale: ptBR })}
+            </p>
+          </div>
           <Button variant="outline" size="sm" onClick={() => navigate("/")}>
             <Eye className="w-4 h-4 mr-1" />
             Ver como cliente
           </Button>
         </div>
 
-        {/* Quick Status Update */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-foreground text-base">Atualizar Status Rápido</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {areas?.map(area => {
-                if (area.tipo === "group") {
-                  const areaSubs = subareas?.filter(s => s.area_id === area.id) || [];
-                  return areaSubs.map(sub => {
-                    const status = getLatestForArea(logs || [], area.id, sub.id)?.status || "gray";
-                    return (
-                      <button
-                        key={sub.id}
-                        onClick={() => setUpdateTarget({ areaId: area.id, subareaId: sub.id })}
-                        className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors text-left"
-                      >
-                        <span className="text-sm text-foreground truncate">{sub.nome}</span>
-                        <span className={cn("w-2.5 h-2.5 rounded-full shrink-0 ml-2",
-                          status === "green" ? "bg-status-green" :
-                          status === "yellow" ? "bg-status-yellow" :
-                          status === "red" ? "bg-status-red" : "bg-status-gray"
-                        )} />
-                      </button>
-                    );
-                  });
-                }
-                const status = getLatestForArea(logs || [], area.id)?.status || "gray";
-                return (
-                  <button
-                    key={area.id}
-                    onClick={() => setUpdateTarget({ areaId: area.id })}
-                    className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors text-left"
-                  >
-                    <span className="text-sm font-medium text-foreground">{area.nome}</span>
-                    <span className={cn("w-2.5 h-2.5 rounded-full shrink-0 ml-2",
-                      status === "green" ? "bg-status-green" :
-                      status === "yellow" ? "bg-status-yellow" :
-                      status === "red" ? "bg-status-red" : "bg-status-gray"
-                    )} />
-                  </button>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Atualizações (7d)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-foreground">{kpiData?.totalUpdates || 0}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Incidentes Red (7d)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-status-red">{kpiData?.redCount || 0}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Incidentes Ativos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-status-yellow">{activeIncidents.length}</p>
-            </CardContent>
-          </Card>
+        {/* Section navigation */}
+        <div className="flex items-center gap-1 mb-6 border-b border-border pb-2 overflow-x-auto">
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => setActiveSection(item.key)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap",
+                activeSection === item.key
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}
+            >
+              <item.icon className="w-4 h-4" />
+              {item.label}
+              {item.key === "whatsapp" && (overdueChecks > 0) && (
+                <span className="w-5 h-5 rounded-full bg-status-red text-[10px] font-bold text-white flex items-center justify-center">
+                  {overdueChecks}
+                </span>
+              )}
+              {item.key === "incidents" && activeIncidents.length > 0 && (
+                <span className="w-5 h-5 rounded-full bg-status-yellow text-[10px] font-bold text-foreground flex items-center justify-center">
+                  {activeIncidents.length}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
 
-        {/* Create Incident */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-foreground flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" />
-              Criar Incidente
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              placeholder="Título do incidente"
-              value={incidentTitle}
-              onChange={e => setIncidentTitle(e.target.value)}
-            />
-            <Select value={incidentAreaId} onValueChange={setIncidentAreaId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Área afetada (opcional)" />
-              </SelectTrigger>
-              <SelectContent>
-                {areas?.map(a => (
-                  <SelectItem key={a.id} value={a.id}>{a.nome}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Textarea
-              placeholder="Descrição inicial do incidente..."
-              value={incidentMessage}
-              onChange={e => setIncidentMessage(e.target.value)}
-            />
-            <Button onClick={createIncident} size="sm">
-              <Plus className="w-4 h-4 mr-1" /> Criar Incidente
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Update Incident */}
-        {activeIncidents.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-foreground text-base">Atualizar Incidente</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Select value={updateIncidentId} onValueChange={setUpdateIncidentId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o incidente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeIncidents.map(i => (
-                    <SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={updateStatus} onValueChange={setUpdateStatus}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="investigating">Investigando</SelectItem>
-                  <SelectItem value="identified">Identificado</SelectItem>
-                  <SelectItem value="monitoring">Monitorando</SelectItem>
-                  <SelectItem value="resolved">Resolvido</SelectItem>
-                </SelectContent>
-              </Select>
-              <Textarea
-                placeholder="Mensagem da atualização..."
-                value={updateMessage}
-                onChange={e => setUpdateMessage(e.target.value)}
+        {/* Section content */}
+        <div className="space-y-6">
+          {activeSection === "overview" && (
+            <>
+              <DaySummary
+                todayUpdates={todayLogs.length}
+                activeIncidents={activeIncidents.length}
+                pendingChecks={pendingChecks}
+                overdueChecks={overdueChecks}
+                lastGlobalUpdate={lastGlobalUpdate}
+                allStatuses={allStatuses}
               />
-              <Button onClick={addIncidentUpdate} size="sm">
-                Adicionar Atualização
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Operator Ranking */}
-        {kpiData?.operatorRanking && kpiData.operatorRanking.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <BarChart3 className="w-4 h-4" />
-                Ranking de Operadores (7 dias)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {kpiData.operatorRanking.map((op, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <span className="text-sm text-foreground">{op.nome}</span>
-                    <span className="text-sm font-medium text-muted-foreground">{op.count} atualizações</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Manage Areas */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-foreground">Gerenciar Áreas</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                placeholder="Nome da área"
-                value={newAreaName}
-                onChange={e => setNewAreaName(e.target.value)}
-                className="flex-1"
+              {/* Quick view of operation + whatsapp */}
+              <OperationTable
+                services={serviceStatuses}
+                onQuickUpdate={handleQuickUpdate}
+                onOpenNote={(areaId) => setUpdateTarget({ areaId })}
+                onOpenIncident={(areaId) => {
+                  setActiveSection("incidents");
+                }}
               />
-              <Select value={newAreaType} onValueChange={(v: "normal" | "group") => setNewAreaType(v)}>
-                <SelectTrigger className="w-full sm:w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="group">Grupo</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button onClick={addArea} size="sm">
-                <Plus className="w-4 h-4 mr-1" /> Adicionar
-              </Button>
-            </div>
-            <div className="divide-y divide-border">
-              {areas?.map(area => (
-                <div key={area.id} className="flex items-center justify-between py-2">
-                  <div>
-                    <span className="text-sm font-medium text-foreground">{area.nome}</span>
-                    <span className="text-xs text-muted-foreground ml-2">({area.tipo})</span>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => deleteArea(area.id)}>
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Manage Subareas */}
-        {groupAreas.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-foreground">Gerenciar Subáreas</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Select value={newSubareaAreaId} onValueChange={setNewSubareaAreaId}>
-                  <SelectTrigger className="w-full sm:w-[200px]">
-                    <SelectValue placeholder="Selecione o grupo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {groupAreas.map(a => (
-                      <SelectItem key={a.id} value={a.id}>{a.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  placeholder="Nome da subárea"
-                  value={newSubareaName}
-                  onChange={e => setNewSubareaName(e.target.value)}
-                  className="flex-1"
+              {whatsappSubareas.length > 0 && (
+                <WhatsAppCheckGrid
+                  subareaChecks={subareaChecks}
+                  onMarkCheck={handleMarkCheck}
+                  onBulkMarkSlot={handleBulkMarkSlot}
+                  onBulkMarkChannel={handleBulkMarkChannel}
+                  onBulkMarkAll={handleBulkMarkAll}
                 />
-                <Button onClick={addSubarea} size="sm">
-                  <Plus className="w-4 h-4 mr-1" /> Adicionar
-                </Button>
-              </div>
-              <div className="divide-y divide-border">
-                {subareas?.map(sub => (
-                  <div key={sub.id} className="flex items-center justify-between py-2">
-                    <div>
-                      <span className="text-sm text-foreground">{sub.nome}</span>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        ({areas?.find(a => a.id === sub.area_id)?.nome})
-                      </span>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => deleteSubarea(sub.id)}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              )}
+            </>
+          )}
+
+          {activeSection === "operation" && (
+            <OperationTable
+              services={serviceStatuses}
+              onQuickUpdate={handleQuickUpdate}
+              onOpenNote={(areaId) => setUpdateTarget({ areaId })}
+              onOpenIncident={(areaId) => {
+                setActiveSection("incidents");
+              }}
+            />
+          )}
+
+          {activeSection === "whatsapp" && whatsappSubareas.length > 0 && (
+            <WhatsAppCheckGrid
+              subareaChecks={subareaChecks}
+              onMarkCheck={handleMarkCheck}
+              onBulkMarkSlot={handleBulkMarkSlot}
+              onBulkMarkChannel={handleBulkMarkChannel}
+              onBulkMarkAll={handleBulkMarkAll}
+            />
+          )}
+
+          {activeSection === "incidents" && (
+            <IncidentManagement
+              incidents={incidents || []}
+              areas={areas || []}
+              subareas={subareas || []}
+              onCreateIncident={handleCreateIncident}
+              onUpdateIncident={handleUpdateIncident}
+            />
+          )}
+
+          {activeSection === "settings" && (
+            <SettingsPanel
+              areas={areas || []}
+              subareas={subareas || []}
+              onRefresh={() => {
+                refetchAreas();
+                refetchSubareas();
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {updateTarget && (
@@ -475,9 +481,13 @@ export default function AdminPage() {
           open={!!updateTarget}
           onClose={() => setUpdateTarget(null)}
           areaId={updateTarget.areaId}
-          areaName={getAreaName(updateTarget.areaId)}
+          areaName={areas?.find((a) => a.id === updateTarget.areaId)?.nome || ""}
           subareaId={updateTarget.subareaId}
-          subareaName={updateTarget.subareaId ? getSubareaName(updateTarget.subareaId) : undefined}
+          subareaName={
+            updateTarget.subareaId
+              ? subareas?.find((s) => s.id === updateTarget.subareaId)?.nome
+              : undefined
+          }
         />
       )}
     </div>
