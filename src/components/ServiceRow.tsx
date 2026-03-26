@@ -98,8 +98,16 @@ export function ServiceRow({
   onToggle,
   subareas,
 }: ServiceRowProps) {
+  const hasDown = isGroup && subareas?.some((s) => s.status === "red");
+  const hasDegraded = isGroup && !hasDown && subareas?.some((s) => s.status === "yellow");
+
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
+    <div className={cn(
+      "bg-card border rounded-xl overflow-hidden transition-colors",
+      hasDown ? "border-status-red/40 bg-status-red/[0.03]" :
+      hasDegraded ? "border-status-yellow/40 bg-status-yellow/[0.03]" :
+      "border-border"
+    )}>
       {/* Main row */}
       <div
         className={cn(
