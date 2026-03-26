@@ -23,9 +23,22 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideSta
       const dayStart = startOfDay(day);
       const dayEnd = endOfDay(day);
 
-      // For today, use override if provided
+      // For today, combine override with historical logs
       if (i === 0 && todayOverrideStatus) {
-        result.push({ date: day, status: todayOverrideStatus });
+        const todayLogs = logs?.filter((l: any) => {
+          if (l.area_id !== areaId) return false;
+          if (subareaId && l.subarea_id !== subareaId) return false;
+          if (!subareaId && l.subarea_id) return false;
+          const logDate = new Date(l.created_at);
+          return logDate >= dayStart && logDate <= dayEnd;
+        }) || [];
+        const hadIncident = todayLogs.some((l: any) => l.status === "red" || l.status === "yellow");
+        // If currently operational but had issues earlier, show yellow
+        if (todayOverrideStatus === "green" && hadIncident) {
+          result.push({ date: day, status: "yellow" });
+        } else {
+          result.push({ date: day, status: todayOverrideStatus });
+        }
         continue;
       }
 
