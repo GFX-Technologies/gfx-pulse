@@ -79,10 +79,9 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideSta
         const hasYellow = dayLogs.some((l: any) => l.status === "yellow");
         const hasGreen = dayLogs.some((l: any) => l.status === "green");
         if (hasRed) {
-          // If also has green (resolved), mark as had incident
-          result.push({ date: day, status: hasGreen ? "green" : "red", hadIncident: hasGreen });
+          result.push({ date: day, status: hasGreen ? "green" : "red", hadIncident: hasGreen, incidentColor: "red" });
         } else if (hasYellow) {
-          result.push({ date: day, status: hasGreen ? "green" : "yellow", hadIncident: hasGreen });
+          result.push({ date: day, status: hasGreen ? "green" : "yellow", hadIncident: hasGreen, incidentColor: "yellow" });
         } else {
           result.push({ date: day, status: "green" });
         }
