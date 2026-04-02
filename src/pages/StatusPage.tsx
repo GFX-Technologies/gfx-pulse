@@ -73,10 +73,10 @@ export default function StatusPage() {
     whatsappSubareas.forEach(sub => {
       const checks = whatsappChecks?.filter(c => c.subarea_id === sub.id && c.status !== "not_checked");
       if (checks && checks.length > 0) {
-        const latest = checks.reduce((a, b) => 
-          new Date(a.checked_at || a.created_at) > new Date(b.checked_at || b.created_at) ? a : b
+      const latest = checks.reduce((a, b) => 
+          new Date(a.checked_at || 0) > new Date(b.checked_at || 0) ? a : b
         );
-        map[sub.id] = new Date(latest.checked_at || latest.created_at);
+        map[sub.id] = latest.checked_at ? new Date(latest.checked_at) : null;
       } else {
         map[sub.id] = null;
       }
