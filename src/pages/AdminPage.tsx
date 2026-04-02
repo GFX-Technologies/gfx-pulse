@@ -287,6 +287,39 @@ export default function AdminPage() {
       return;
     }
 
+    // Create status_logs for incident tracking
+    if (whatsappArea) {
+      const statusLogInserts: any[] = [];
+      for (const ins of inserts) {
+        const prevCheck = getCheckForSlot(whatsappChecks || [], ins.subarea_id, ins.check_time_slot);
+        const prevStatus = prevCheck?.status;
+        // Log when setting to degraded/down
+        if (ins.status === "degraded" || ins.status === "down") {
+          const statusMap: Record<string, string> = { degraded: "yellow", down: "red" };
+          statusLogInserts.push({
+            area_id: whatsappArea.id,
+            subarea_id: ins.subarea_id,
+            status: statusMap[ins.status],
+            usuario_id: user.id,
+            observacao: `WhatsApp bulk: ${ins.status}`,
+          });
+        }
+        // Log green when recovering from incident
+        if ((prevStatus === "degraded" || prevStatus === "down") && ins.status === "operational") {
+          statusLogInserts.push({
+            area_id: whatsappArea.id,
+            subarea_id: ins.subarea_id,
+            status: "green",
+            usuario_id: user.id,
+            observacao: "WhatsApp bulk: recuperado",
+          });
+        }
+      }
+      if (statusLogInserts.length > 0) {
+        await supabase.from("status_logs").insert(statusLogInserts);
+      }
+    }
+
     const { error } = await supabase.from("whatsapp_checks").upsert(inserts, {
       onConflict: "subarea_id,check_date,check_time_slot",
     });
@@ -294,6 +327,7 @@ export default function AdminPage() {
     else {
       toast.success(`${inserts.length} checks registrados`);
       queryClient.invalidateQueries({ queryKey: ["whatsapp-checks"] });
+      queryClient.invalidateQueries({ queryKey: ["all-status-logs"] });
     }
   };
 
