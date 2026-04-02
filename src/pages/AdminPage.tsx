@@ -192,22 +192,18 @@ export default function AdminPage() {
     const inserts: any[] = [];
 
     if (scope === "slot" && target) {
-      // All subareas for this time slot that aren't already set
       whatsappSubareas.forEach((sub) => {
-        const existing = getCheckForSlot(whatsappChecks || [], sub.id, target);
-        if (!existing || existing.status === "not_checked") {
-          inserts.push({
-            subarea_id: sub.id,
-            check_date: today,
-            check_time_slot: target,
-            status,
-            observacao: note || `Bulk - slot ${target}`,
-            checked_by: user.id,
-            checked_at: new Date().toISOString(),
-            bulk_action: true,
-            bulk_scope: "slot",
-          });
-        }
+        inserts.push({
+          subarea_id: sub.id,
+          check_date: today,
+          check_time_slot: target,
+          status,
+          observacao: note || `Bulk - slot ${target}`,
+          checked_by: user.id,
+          checked_at: new Date().toISOString(),
+          bulk_action: true,
+          bulk_scope: "slot",
+        });
       });
     } else if (scope === "channel" && target) {
       SLA_CHECK_TIMES.forEach((time) => {
@@ -215,20 +211,17 @@ export default function AdminPage() {
         const slotTime = new Date(now);
         slotTime.setHours(h, m, 0, 0);
         if (now < slotTime) return;
-        const existing = getCheckForSlot(whatsappChecks || [], target, time);
-        if (!existing || existing.status === "not_checked") {
-          inserts.push({
-            subarea_id: target,
-            check_date: today,
-            check_time_slot: time,
-            status,
-            observacao: note || "Bulk - canal",
-            checked_by: user.id,
-            checked_at: new Date().toISOString(),
-            bulk_action: true,
-            bulk_scope: "channel",
-          });
-        }
+        inserts.push({
+          subarea_id: target,
+          check_date: today,
+          check_time_slot: time,
+          status,
+          observacao: note || "Bulk - canal",
+          checked_by: user.id,
+          checked_at: new Date().toISOString(),
+          bulk_action: true,
+          bulk_scope: "channel",
+        });
       });
     } else if (scope === "day") {
       whatsappSubareas.forEach((sub) => {
@@ -237,20 +230,17 @@ export default function AdminPage() {
           const slotTime = new Date(now);
           slotTime.setHours(h, m, 0, 0);
           if (now < slotTime) return;
-          const existing = getCheckForSlot(whatsappChecks || [], sub.id, time);
-          if (!existing || existing.status === "not_checked") {
-            inserts.push({
-              subarea_id: sub.id,
-              check_date: today,
-              check_time_slot: time,
-              status,
-              observacao: note || "Bulk - dia",
-              checked_by: user.id,
-              checked_at: new Date().toISOString(),
-              bulk_action: true,
-              bulk_scope: "day",
-            });
-          }
+          inserts.push({
+            subarea_id: sub.id,
+            check_date: today,
+            check_time_slot: time,
+            status,
+            observacao: note || "Bulk - dia",
+            checked_by: user.id,
+            checked_at: new Date().toISOString(),
+            bulk_action: true,
+            bulk_scope: "day",
+          });
         });
       });
     }
