@@ -161,10 +161,46 @@ export default function AdminPage() {
     }
   };
 
+  // Helper: log incident status_log for WhatsApp subareas when status changes from degraded/down
+  const logWhatsAppIncident = async (subareaId: string, incidentStatus: WhatsAppCheckStatus) => {
+    if (!user || !whatsappArea) return;
+    const statusMap: Record<string, string> = { degraded: "yellow", down: "red" };
+    const logStatus = statusMap[incidentStatus];
+    if (!logStatus) return;
+    await supabase.from("status_logs").insert({
+      area_id: whatsappArea.id,
+      subarea_id: subareaId,
+      status: logStatus as any,
+      usuario_id: user.id,
+      observacao: `WhatsApp check: ${incidentStatus}`,
+    });
+  };
+
   const handleSetCheck = async (subareaId: string, timeSlot: string, status: WhatsAppCheckStatus, note?: string) => {
     if (!user) return;
     const today = new Date().toISOString().split("T")[0];
-    
+
+    // Check previous status before upserting
+    const prevCheck = getCheckForSlot(whatsappChecks || [], subareaId, timeSlot);
+    const prevStatus = prevCheck?.status;
+    const wasIncident = prevStatus === "degraded" || prevStatus === "down";
+    const isNowOk = status === "operational";
+
+    // If changing TO a non-operational status, log it as incident
+    if (status === "degraded" || status === "down") {
+      await logWhatsAppIncident(subareaId, status);
+    }
+    // If recovering from incident, also log the green status
+    if (wasIncident && isNowOk && whatsappArea) {
+      await supabase.from("status_logs").insert({
+        area_id: whatsappArea.id,
+        subarea_id: subareaId,
+        status: "green" as any,
+        usuario_id: user.id,
+        observacao: "WhatsApp check: recuperado",
+      });
+    }
+
     // Upsert: use the unique constraint (subarea_id, check_date, check_time_slot)
     const { error } = await supabase.from("whatsapp_checks").upsert(
       {
@@ -183,6 +219,7 @@ export default function AdminPage() {
     else {
       toast.success("Verificação registrada");
       queryClient.invalidateQueries({ queryKey: ["whatsapp-checks"] });
+      queryClient.invalidateQueries({ queryKey: ["all-status-logs"] });
     }
   };
 
@@ -250,6 +287,39 @@ export default function AdminPage() {
       return;
     }
 
+    // Create status_logs for incident tracking
+    if (whatsappArea) {
+      const statusLogInserts: any[] = [];
+      for (const ins of inserts) {
+        const prevCheck = getCheckForSlot(whatsappChecks || [], ins.subarea_id, ins.check_time_slot);
+        const prevStatus = prevCheck?.status;
+        // Log when setting to degraded/down
+        if (ins.status === "degraded" || ins.status === "down") {
+          const statusMap: Record<string, string> = { degraded: "yellow", down: "red" };
+          statusLogInserts.push({
+            area_id: whatsappArea.id,
+            subarea_id: ins.subarea_id,
+            status: statusMap[ins.status],
+            usuario_id: user.id,
+            observacao: `WhatsApp bulk: ${ins.status}`,
+          });
+        }
+        // Log green when recovering from incident
+        if ((prevStatus === "degraded" || prevStatus === "down") && ins.status === "operational") {
+          statusLogInserts.push({
+            area_id: whatsappArea.id,
+            subarea_id: ins.subarea_id,
+            status: "green",
+            usuario_id: user.id,
+            observacao: "WhatsApp bulk: recuperado",
+          });
+        }
+      }
+      if (statusLogInserts.length > 0) {
+        await supabase.from("status_logs").insert(statusLogInserts);
+      }
+    }
+
     const { error } = await supabase.from("whatsapp_checks").upsert(inserts, {
       onConflict: "subarea_id,check_date,check_time_slot",
     });
@@ -257,6 +327,7 @@ export default function AdminPage() {
     else {
       toast.success(`${inserts.length} checks registrados`);
       queryClient.invalidateQueries({ queryKey: ["whatsapp-checks"] });
+      queryClient.invalidateQueries({ queryKey: ["all-status-logs"] });
     }
   };
 
