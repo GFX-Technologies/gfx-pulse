@@ -71,11 +71,18 @@ export default function StatusPage() {
   const slaCheckTimes = useMemo(() => {
     const map: Record<string, Date | null> = {};
     whatsappSubareas.forEach(sub => {
-      const log = logs ? getLatestForArea(logs, whatsappArea?.id || "", sub.id) : null;
-      map[sub.id] = log ? new Date(log.created_at) : null;
+      const checks = whatsappChecks?.filter(c => c.subarea_id === sub.id && c.status !== "not_checked");
+      if (checks && checks.length > 0) {
+      const latest = checks.reduce((a, b) => 
+          new Date(a.checked_at || 0) > new Date(b.checked_at || 0) ? a : b
+        );
+        map[sub.id] = latest.checked_at ? new Date(latest.checked_at) : null;
+      } else {
+        map[sub.id] = null;
+      }
     });
     return map;
-  }, [whatsappSubareas, logs, whatsappArea]);
+  }, [whatsappSubareas, whatsappChecks]);
 
   if (areasLoading) {
     return (
