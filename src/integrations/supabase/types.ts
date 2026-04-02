@@ -183,7 +183,9 @@ export type Database = {
           area_id: string
           created_at: string
           id: string
+          is_auto_generated: boolean
           observacao: string | null
+          reference_date: string | null
           status: Database["public"]["Enums"]["status_type"]
           subarea_id: string | null
           usuario_id: string
@@ -192,7 +194,9 @@ export type Database = {
           area_id: string
           created_at?: string
           id?: string
+          is_auto_generated?: boolean
           observacao?: string | null
+          reference_date?: string | null
           status?: Database["public"]["Enums"]["status_type"]
           subarea_id?: string | null
           usuario_id: string
@@ -201,7 +205,9 @@ export type Database = {
           area_id?: string
           created_at?: string
           id?: string
+          is_auto_generated?: boolean
           observacao?: string | null
+          reference_date?: string | null
           status?: Database["public"]["Enums"]["status_type"]
           subarea_id?: string | null
           usuario_id?: string
