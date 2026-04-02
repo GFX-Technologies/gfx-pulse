@@ -195,6 +195,7 @@ export default function StatusPage() {
                 isExpanded={expandedGroups.has(area.id)}
                 onToggle={() => toggleGroup(area.id)}
                 subareas={subareaData}
+                whatsappChecks={isGroup ? whatsappChecks || [] : undefined}
               />
             );
           })}
