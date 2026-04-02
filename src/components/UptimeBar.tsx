@@ -88,7 +88,7 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideSta
       }
     }
     return result;
-  }, [logs, areaId, subareaId, days, todayOverrideStatus]);
+  }, [logs, areaId, subareaId, days, todayOverrideStatus, whatsappChecks]);
 
   const uptimePercent = useMemo(() => {
     const daysWithData = dayStatuses.filter(d => d.status !== "gray");
@@ -123,7 +123,7 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideSta
                   style={{ minWidth: "2px" }}
                 >
                   <div className="flex-1 bg-status-green rounded-t-[2px]" />
-                  <div className="h-2.5 bg-status-yellow rounded-b-[2px]" />
+                  <div className={`h-2.5 rounded-b-[2px] ${day.incidentColor === "red" ? "bg-status-red" : "bg-status-yellow"}`} />
                 </div>
               ) : (
                 <div
