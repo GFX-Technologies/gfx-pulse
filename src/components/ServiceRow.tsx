@@ -13,6 +13,7 @@ interface ServiceRowProps {
   onToggle?: () => void;
   subareas?: { id: string; nome: string; status: string }[];
   subareaLogs?: Record<string, any[]>;
+  whatsappChecks?: any[];
 }
 
 const statusLabels: Record<string, string> = {
@@ -97,6 +98,7 @@ export function ServiceRow({
   isExpanded,
   onToggle,
   subareas,
+  whatsappChecks,
 }: ServiceRowProps) {
   const hasDown = isGroup && subareas?.some((s) => s.status === "red");
   const hasDegraded = isGroup && !hasDown && subareas?.some((s) => s.status === "yellow");
@@ -163,7 +165,7 @@ export function ServiceRow({
                 </div>
               </div>
               <div className="px-5 pb-3 pl-10">
-                <UptimeBar logs={logs} areaId={areaId} subareaId={sub.id} todayOverrideStatus={sub.status as "green" | "yellow" | "red" | "gray"} />
+                <UptimeBar logs={logs} areaId={areaId} subareaId={sub.id} todayOverrideStatus={sub.status as "green" | "yellow" | "red" | "gray"} whatsappChecks={whatsappChecks} />
               </div>
             </div>
           ))}
