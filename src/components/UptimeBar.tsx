@@ -9,12 +9,13 @@ interface UptimeBarProps {
   subareaId?: string;
   days?: number;
   todayOverrideStatus?: "green" | "yellow" | "red" | "gray";
+  whatsappChecks?: any[];
 }
 
 type DayStatus = "green" | "yellow" | "red" | "gray";
-type DayEntry = { date: Date; status: DayStatus; hadIncident?: boolean };
+type DayEntry = { date: Date; status: DayStatus; hadIncident?: boolean; incidentColor?: "red" | "yellow" };
 
-export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideStatus }: UptimeBarProps) {
+export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideStatus, whatsappChecks }: UptimeBarProps) {
   const dayStatuses = useMemo(() => {
     const result: DayEntry[] = [];
     const now = new Date();
@@ -24,7 +25,7 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideSta
       const dayStart = startOfDay(day);
       const dayEnd = endOfDay(day);
 
-      // For today, combine override with historical logs
+      // For today, combine override with historical logs + whatsapp checks
       if (i === 0 && todayOverrideStatus) {
         const todayLogs = logs?.filter((l: any) => {
           if (l.area_id !== areaId) return false;
@@ -33,10 +34,30 @@ export function UptimeBar({ logs, areaId, subareaId, days = 90, todayOverrideSta
           const logDate = new Date(l.created_at);
           return logDate >= dayStart && logDate <= dayEnd;
         }) || [];
-        const hadIncident = todayLogs.some((l: any) => l.status === "red" || l.status === "yellow");
-        // If currently operational but had issues earlier, show green with small incident mark
+        let hadIncident = todayLogs.some((l: any) => l.status === "red" || l.status === "yellow");
+        let worstIncident: "red" | "yellow" | undefined;
+        
+        // Also check whatsapp_checks for incidents
+        if (!hadIncident && whatsappChecks && subareaId) {
+          const todayStr = new Date().toISOString().split("T")[0];
+          const todayWaChecks = whatsappChecks.filter(
+            (c: any) => c.subarea_id === subareaId && c.check_date === todayStr
+          );
+          const hasWaDown = todayWaChecks.some((c: any) => c.status === "down");
+          const hasWaDegraded = todayWaChecks.some((c: any) => c.status === "degraded");
+          if (hasWaDown || hasWaDegraded) {
+            hadIncident = true;
+            worstIncident = hasWaDown ? "red" : "yellow";
+          }
+        }
+        
+        // Determine worst incident color from status_logs
+        if (!worstIncident && hadIncident) {
+          worstIncident = todayLogs.some((l: any) => l.status === "red") ? "red" : "yellow";
+        }
+
         if (todayOverrideStatus === "green" && hadIncident) {
-          result.push({ date: day, status: "green", hadIncident: true });
+          result.push({ date: day, status: "green", hadIncident: true, incidentColor: worstIncident });
         } else {
           result.push({ date: day, status: todayOverrideStatus });
         }
