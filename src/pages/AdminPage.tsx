@@ -101,6 +101,7 @@ export default function AdminPage() {
           checkedBy: (check as any).profiles?.nome || undefined,
           checkedAt: check.checked_at ? format(new Date(check.checked_at), "HH:mm") : undefined,
           observacao: check.observacao || undefined,
+          isAuto: check.bulk_scope === "auto",
         };
       } else {
         slots[time] = { status: "not_checked" };

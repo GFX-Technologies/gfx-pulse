@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { CheckCheck, Circle } from "lucide-react";
+import { Bot, CheckCheck, Circle } from "lucide-react";
 import { SLA_CHECK_TIMES } from "@/lib/sla";
 import type { WhatsAppCheckStatus } from "@/hooks/use-whatsapp-checks";
 
