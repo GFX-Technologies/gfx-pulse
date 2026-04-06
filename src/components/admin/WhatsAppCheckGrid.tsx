@@ -14,6 +14,7 @@ export interface SlotData {
   checkedBy?: string;
   checkedAt?: string;
   observacao?: string;
+  isAuto?: boolean;
 }
 
 interface SubareaCheckRow {
