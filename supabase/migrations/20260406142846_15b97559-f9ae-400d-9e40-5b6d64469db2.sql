@@ -1,0 +1,1 @@
+DELETE FROM whatsapp_checks WHERE check_date = CURRENT_DATE AND bulk_scope = 'auto' AND observacao = 'Check automático - teste';
