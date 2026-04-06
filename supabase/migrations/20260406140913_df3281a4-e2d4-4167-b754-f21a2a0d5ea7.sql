@@ -1,0 +1,1 @@
+DELETE FROM status_logs WHERE is_auto_generated = true AND reference_date = '2026-04-06';

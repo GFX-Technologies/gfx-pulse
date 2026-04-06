@@ -55,7 +55,16 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const today = new Date().toISOString().split("T")[0];
+    // Support test_date param for testing weekend/holiday scenarios
+    let today = new Date().toISOString().split("T")[0];
+    try {
+      const body = await req.json();
+      if (body?.test_date) {
+        today = body.test_date;
+      }
+    } catch {
+      // No body or invalid JSON — use real today
+    }
 
     // Check if we already replicated today
     const { data: existing } = await supabase
