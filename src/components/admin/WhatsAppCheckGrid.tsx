@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { CheckCheck, Circle } from "lucide-react";
+import { Bot, CheckCheck, Circle } from "lucide-react";
 import { SLA_CHECK_TIMES } from "@/lib/sla";
 import type { WhatsAppCheckStatus } from "@/hooks/use-whatsapp-checks";
 
@@ -14,6 +14,7 @@ export interface SlotData {
   checkedBy?: string;
   checkedAt?: string;
   observacao?: string;
+  isAuto?: boolean;
 }
 
 interface SubareaCheckRow {
@@ -240,17 +241,28 @@ function CheckCellPopover({
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "w-full h-10 rounded-lg border flex items-center justify-center transition-all cursor-pointer",
+            "w-full h-10 rounded-lg border flex items-center justify-center gap-1 transition-all cursor-pointer relative",
             CELL_STYLES[slot.status],
             "hover:ring-2 hover:ring-primary/20"
           )}
           disabled={disabled}
-          title={slot.checkedBy ? `${slot.checkedBy} às ${slot.checkedAt}` : undefined}
+          title={
+            slot.isAuto
+              ? "Check automático (fim de semana/feriado)"
+              : slot.checkedBy
+              ? `${slot.checkedBy} às ${slot.checkedAt}`
+              : undefined
+          }
         >
           {slot.status === "not_checked" ? (
             <Circle className="w-3.5 h-3.5 text-muted-foreground/40" />
           ) : (
-            <span className={cn("w-3 h-3 rounded-full", DOT_STYLES[slot.status])} />
+            <>
+              <span className={cn("w-3 h-3 rounded-full", DOT_STYLES[slot.status])} />
+              {slot.isAuto && (
+                <Bot className="w-3 h-3 text-muted-foreground/60 absolute top-0.5 right-0.5" />
+              )}
+            </>
           )}
         </button>
       </PopoverTrigger>
